@@ -110,6 +110,20 @@ test('AirzoneCloudClient', async (t) => {
     assert.deepEqual(patch.body, { param: 'power', value: true, installation_id: 'install-1' });
   });
 
+  await t.test('setZoneParam forwards the opts object when present', async () => {
+    await client.setZoneParam('zone-1', 'install-1', {
+      param: 'setpoint',
+      value: 22,
+      opts: { units: 0 },
+    });
+    assert.deepEqual(requests.at(-1).body, {
+      param: 'setpoint',
+      value: 22,
+      installation_id: 'install-1',
+      opts: { units: 0 },
+    });
+  });
+
   await t.test('a 401 triggers a single token refresh and a retry', async () => {
     behaviour.failNextWith401 = true;
     const status = await client.getZoneStatus('zone-1', 'install-1');

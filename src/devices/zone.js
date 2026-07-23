@@ -18,8 +18,10 @@ import {
   AC_MODE,
   AIRZONE_MODE,
   AIRZONE_PARAM,
+  AIRZONE_UNITS,
   DEFAULT_TEMPERATURE_BOUNDS,
   FEATURE_CODES,
+  MODE_TEMPERATURE_FIELDS,
   ROOM_TEMPERATURE_BOUNDS,
 } from '../constants.js';
 
@@ -41,10 +43,10 @@ const MODES_GLADYS_TO_AIRZONE = {
 };
 
 /**
- * Read a value from an Airzone zone status. Values may be delivered either
- * directly or wrapped in a `{ value }` object.
+ * Read a scalar value from an Airzone zone status. Values may be delivered
+ * either directly or wrapped in a `{ value }` object.
  * @param {object} status Airzone zone status
- * @param {string} name status field name (e.g. 'power', 'setpoint')
+ * @param {string} name status field name (e.g. 'power', 'mode')
  * @returns {*} the value, or undefined if absent
  */
 export function getParam(status, name) {
@@ -53,6 +55,45 @@ export function getParam(status, name) {
     return raw.value;
   }
   return raw;
+}
+
+/**
+ * Read a temperature value from an Airzone zone status. Airzone delivers
+ * temperatures as `{ celsius, fah }` objects (and, defensively, sometimes as a
+ * `{ value }` object or a bare number).
+ * @param {object} status Airzone zone status
+ * @param {string} name status field name (e.g. 'local_temp', 'setpoint_air_cool')
+ * @returns {number|undefined} the Celsius value, or undefined if absent
+ */
+export function getTemperature(status, name) {
+  const raw = (status || {})[name];
+  if (raw !== null && typeof raw === 'object') {
+    if ('celsius' in raw) return raw.celsius;
+    if ('value' in raw) return raw.value;
+    return undefined;
+  }
+  return raw;
+}
+
+/**
+ * The Airzone status/range fields for the zone's current operation mode.
+ * Falls back to the cooling fields when the mode is unknown.
+ * @param {object} status Airzone zone status
+ * @returns {{ setpoint: string, rangeMin: string, rangeMax: string }}
+ */
+function modeTemperatureFields(status) {
+  const modeCode = toNumber(getParam(status, 'mode'));
+  return MODE_TEMPERATURE_FIELDS[modeCode] || MODE_TEMPERATURE_FIELDS[AIRZONE_MODE.COOLING];
+}
+
+/**
+ * Whether the zone controls the system operation mode (only the master zone of
+ * a system does — it is the one advertising the list of available modes).
+ * @param {object} status Airzone zone status
+ * @returns {boolean}
+ */
+function controlsMode(status) {
+  return Array.isArray((status || {}).mode_available);
 }
 
 /**
@@ -74,10 +115,9 @@ function toNumber(value) {
  * @returns {{ min: number, max: number }} the temperature bounds
  */
 function getTemperatureBounds(status) {
-  const min =
-    toNumber(getParam(status, 'range_sp_min')) ?? toNumber(getParam(status, 'range_air_min'));
-  const max =
-    toNumber(getParam(status, 'range_sp_max')) ?? toNumber(getParam(status, 'range_air_max'));
+  const fields = modeTemperatureFields(status);
+  const min = toNumber(getTemperature(status, fields.rangeMin));
+  const max = toNumber(getTemperature(status, fields.rangeMax));
   return {
     min: min ?? DEFAULT_TEMPERATURE_BOUNDS.MIN,
     max: max ?? DEFAULT_TEMPERATURE_BOUNDS.MAX,
@@ -92,7 +132,7 @@ function getTemperatureBounds(status) {
  */
 export function buildZoneFeatures(externalId, zone) {
   const { min, max } = getTemperatureBounds(zone.status);
-  return [
+  const features = [
     {
       name: 'Power',
       external_id: `${externalId}:${FEATURE_CODES.POWER}`,
@@ -103,7 +143,13 @@ export function buildZoneFeatures(externalId, zone) {
       category: DEVICE_FEATURE_CATEGORIES.AIR_CONDITIONING,
       type: DEVICE_FEATURE_TYPES.AIR_CONDITIONING.BINARY,
     },
-    {
+  ];
+
+  // The operation mode is shared by every zone of a system and can only be
+  // changed on the master zone (the one advertising `mode_available`). Only
+  // that zone gets a controllable Mode feature.
+  if (controlsMode(zone.status)) {
+    features.push({
       name: 'Mode',
       external_id: `${externalId}:${FEATURE_CODES.MODE}`,
       read_only: false,
@@ -112,7 +158,10 @@ export function buildZoneFeatures(externalId, zone) {
       max: 1,
       category: DEVICE_FEATURE_CATEGORIES.AIR_CONDITIONING,
       type: DEVICE_FEATURE_TYPES.AIR_CONDITIONING.MODE,
-    },
+    });
+  }
+
+  features.push(
     {
       name: 'Temperature',
       external_id: `${externalId}:${FEATURE_CODES.TEMPERATURE}`,
@@ -136,7 +185,9 @@ export function buildZoneFeatures(externalId, zone) {
       category: DEVICE_FEATURE_CATEGORIES.TEMPERATURE_SENSOR,
       type: DEVICE_FEATURE_TYPES.SENSOR.DECIMAL,
     },
-  ];
+  );
+
+  return features;
 }
 
 /**
@@ -147,25 +198,33 @@ export function buildZoneFeatures(externalId, zone) {
  * @returns {Array} states for gladys.publishStates()
  */
 export function buildPollStates(deviceExternalId, status) {
-  const mode = MODES_AIRZONE_TO_GLADYS[toNumber(getParam(status, 'mode'))];
-  return [
+  const fields = modeTemperatureFields(status);
+  const states = [
     {
       device_feature_external_id: `${deviceExternalId}:${FEATURE_CODES.POWER}`,
       state: getParam(status, 'power') ? 1 : 0,
     },
     {
-      device_feature_external_id: `${deviceExternalId}:${FEATURE_CODES.MODE}`,
-      state: mode === undefined ? null : mode,
-    },
-    {
       device_feature_external_id: `${deviceExternalId}:${FEATURE_CODES.TEMPERATURE}`,
-      state: toNumber(getParam(status, 'setpoint')),
+      state: toNumber(getTemperature(status, fields.setpoint)),
     },
     {
       device_feature_external_id: `${deviceExternalId}:${FEATURE_CODES.ROOM_TEMPERATURE}`,
-      state: toNumber(getParam(status, 'local_temp')),
+      state: toNumber(getTemperature(status, 'local_temp')),
     },
-  ].filter((state) => state.state !== null && state.state !== undefined);
+  ];
+
+  // The Mode feature only exists on the master zone (see buildZoneFeatures), so
+  // only report a mode state for that zone.
+  if (controlsMode(status)) {
+    const mode = MODES_AIRZONE_TO_GLADYS[toNumber(getParam(status, 'mode'))];
+    states.push({
+      device_feature_external_id: `${deviceExternalId}:${FEATURE_CODES.MODE}`,
+      state: mode === undefined ? null : mode,
+    });
+  }
+
+  return states.filter((state) => state.state !== null && state.state !== undefined);
 }
 
 /**
@@ -173,7 +232,7 @@ export function buildPollStates(deviceExternalId, status) {
  * the feature is not controllable.
  * @param {string} featureCode last segment of the feature external id
  * @param {number} value value sent by Gladys
- * @returns {{ param: string, value: * }|null} the change
+ * @returns {{ param: string, value: *, opts?: object }|null} the change
  */
 export function buildSetZoneChange(featureCode, value) {
   switch (featureCode) {
@@ -184,7 +243,8 @@ export function buildSetZoneChange(featureCode, value) {
       return mode === undefined ? null : { param: AIRZONE_PARAM.MODE, value: mode };
     }
     case FEATURE_CODES.TEMPERATURE:
-      return { param: AIRZONE_PARAM.SETPOINT, value };
+      // The API rejects a setpoint write without the temperature unit.
+      return { param: AIRZONE_PARAM.SETPOINT, value, opts: { units: AIRZONE_UNITS.CELSIUS } };
     default:
       return null;
   }

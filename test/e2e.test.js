@@ -209,9 +209,9 @@ test('the integration discovers, polls and controls Airzone zones', async (t) =>
     const states = gladys.state.statePosts.at(-1);
     assert.deepEqual(states, [
       { device_feature_external_id: `ext:${SELECTOR}:zone:zone-1:power`, state: 1 },
-      { device_feature_external_id: `ext:${SELECTOR}:zone:zone-1:mode`, state: AC_MODE.HEATING },
       { device_feature_external_id: `ext:${SELECTOR}:zone:zone-1:temperature`, state: 21 },
       { device_feature_external_id: `ext:${SELECTOR}:zone:zone-1:room-temperature`, state: 19.5 },
+      { device_feature_external_id: `ext:${SELECTOR}:zone:zone-1:mode`, state: AC_MODE.HEATING },
     ]);
 
     const status = airzone.requests.at(-1);

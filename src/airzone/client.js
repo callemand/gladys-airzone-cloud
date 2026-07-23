@@ -112,13 +112,19 @@ export class AirzoneCloudClient {
    * @param {object} change the change ({ param, value })
    */
   async setZoneParam(deviceId, installationId, change) {
+    const body = {
+      param: change.param,
+      value: change.value,
+      installation_id: installationId,
+    };
+    // Some parameters (e.g. setpoint) require an `opts` object (temperature
+    // unit); it is omitted for the ones that reject it (e.g. power, mode).
+    if (change.opts) {
+      body.opts = change.opts;
+    }
     return this.#authenticatedRequest(`devices/${deviceId}`, {
       method: 'PATCH',
-      body: JSON.stringify({
-        param: change.param,
-        value: change.value,
-        installation_id: installationId,
-      }),
+      body: JSON.stringify(body),
       contentType: 'application/json',
     });
   }

@@ -1,4 +1,6 @@
-// Shared Airzone Cloud API fixtures (shapes taken from the real Airzone API).
+// Shared Airzone Cloud API fixtures (shapes taken from the real Airzone API:
+// temperatures are `{ celsius, fah }` objects, setpoints/ranges are per-mode,
+// and only the master zone advertises `mode_available`).
 
 export const ZONE_DEVICE = {
   device_id: 'zone-1',
@@ -27,12 +29,26 @@ export const INSTALLATION_DETAIL_RESPONSE = {
   ],
 };
 
-// GET /devices/zone-1/status : mode 3 is "heating" on Airzone.
+// GET /devices/zone-1/status : a master zone (advertises mode_available) in
+// heating mode (Airzone mode 3). Temperatures are Celsius/Fahrenheit objects
+// and the setpoint/range live in the mode-specific "heat"/"hot" fields.
 export const ZONE_STATUS = {
   power: true,
   mode: 3,
-  setpoint: 21,
-  local_temp: 19.5,
-  range_sp_min: 16,
-  range_sp_max: 30,
+  mode_available: [2, 3, 4, 5],
+  local_temp: { celsius: 19.5, fah: 67 },
+  setpoint_air_heat: { celsius: 21, fah: 70 },
+  range_sp_hot_air_min: { celsius: 16, fah: 61 },
+  range_sp_hot_air_max: { celsius: 30, fah: 86 },
+};
+
+// A non-master zone (no mode_available): same system mode, but it cannot change
+// the mode, so it exposes no Mode feature. In cooling mode (2) here.
+export const REGULAR_ZONE_STATUS = {
+  power: false,
+  mode: 2,
+  local_temp: { celsius: 24.2, fah: 76 },
+  setpoint_air_cool: { celsius: 25, fah: 77 },
+  range_sp_cool_air_min: { celsius: 18, fah: 64 },
+  range_sp_cool_air_max: { celsius: 30, fah: 86 },
 };
