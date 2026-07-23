@@ -12,6 +12,11 @@ import { AC_MODE } from '../src/constants.js';
 import { ZONE_DEVICE, ZONE_STATUS, REGULAR_ZONE_STATUS } from './fixtures.js';
 
 const EXTERNAL_ID = 'ext:airzone-cloud:zone:zone-1';
+// Same contract as gladys.externalIds(): { device, feature(featureKey) }.
+const ids = {
+  device: EXTERNAL_ID,
+  feature: (featureKey) => `${EXTERNAL_ID}:${featureKey}`,
+};
 
 test('getParam reads raw values, unwraps { value } objects and tolerates absence', () => {
   assert.equal(getParam({ power: true }, 'power'), true);
@@ -32,7 +37,7 @@ test('getTemperature reads the celsius value of an Airzone temperature object', 
 });
 
 test('buildZoneFeatures exposes power, mode, target and room temperature for a master zone', () => {
-  const features = buildZoneFeatures(EXTERNAL_ID, { ...ZONE_DEVICE, status: ZONE_STATUS });
+  const features = buildZoneFeatures(ids, { ...ZONE_DEVICE, status: ZONE_STATUS });
   assert.equal(features.length, 4);
 
   assert.deepEqual(
@@ -69,7 +74,7 @@ test('buildZoneFeatures exposes power, mode, target and room temperature for a m
 });
 
 test('buildZoneFeatures omits the Mode feature on a non-master zone', () => {
-  const features = buildZoneFeatures(EXTERNAL_ID, { status: REGULAR_ZONE_STATUS });
+  const features = buildZoneFeatures(ids, { status: REGULAR_ZONE_STATUS });
   assert.deepEqual(
     features.map((f) => f.external_id),
     [`${EXTERNAL_ID}:power`, `${EXTERNAL_ID}:temperature`, `${EXTERNAL_ID}:room-temperature`],
@@ -81,7 +86,7 @@ test('buildZoneFeatures omits the Mode feature on a non-master zone', () => {
 });
 
 test('buildZoneFeatures falls back to default bounds when no range is reported', () => {
-  const withoutRange = buildZoneFeatures(EXTERNAL_ID, { status: {} }).find((f) =>
+  const withoutRange = buildZoneFeatures(ids, { status: {} }).find((f) =>
     f.external_id.endsWith(':temperature'),
   );
   assert.equal(withoutRange.min, 10);
@@ -89,7 +94,7 @@ test('buildZoneFeatures falls back to default bounds when no range is reported',
 });
 
 test('buildPollStates maps a master zone status to Gladys states', () => {
-  const states = buildPollStates(EXTERNAL_ID, ZONE_STATUS);
+  const states = buildPollStates(ids, ZONE_STATUS);
   assert.deepEqual(states, [
     { device_feature_external_id: `${EXTERNAL_ID}:power`, state: 1 },
     { device_feature_external_id: `${EXTERNAL_ID}:temperature`, state: 21 },
@@ -99,7 +104,7 @@ test('buildPollStates maps a master zone status to Gladys states', () => {
 });
 
 test('buildPollStates on a non-master zone omits the mode state', () => {
-  const states = buildPollStates(EXTERNAL_ID, REGULAR_ZONE_STATUS);
+  const states = buildPollStates(ids, REGULAR_ZONE_STATUS);
   assert.deepEqual(states, [
     { device_feature_external_id: `${EXTERNAL_ID}:power`, state: 0 },
     { device_feature_external_id: `${EXTERNAL_ID}:temperature`, state: 25 },
@@ -108,7 +113,7 @@ test('buildPollStates on a non-master zone omits the mode state', () => {
 });
 
 test('buildPollStates skips power off and unknown mode / missing values', () => {
-  const states = buildPollStates(EXTERNAL_ID, { power: false, mode: 99, mode_available: [2, 3] });
+  const states = buildPollStates(ids, { power: false, mode: 99, mode_available: [2, 3] });
   assert.deepEqual(states, [{ device_feature_external_id: `${EXTERNAL_ID}:power`, state: 0 }]);
 });
 
@@ -136,7 +141,7 @@ test('mode mappings round-trip between Gladys and Airzone', () => {
     5: AC_MODE.DRYING,
   };
   Object.entries(airzoneModes).forEach(([airzoneMode, gladysMode]) => {
-    const [state] = buildPollStates(EXTERNAL_ID, {
+    const [state] = buildPollStates(ids, {
       mode: Number(airzoneMode),
       mode_available: [1, 2, 3, 4, 5],
     }).filter((s) => s.device_feature_external_id.endsWith(':mode'));

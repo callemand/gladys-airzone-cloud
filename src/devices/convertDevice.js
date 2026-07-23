@@ -17,7 +17,17 @@ import { buildZoneFeatures } from './zone.js';
 
 export const INSTALLATION_ID_PARAM = 'installationId';
 
-const ZONE_SLUG = 'zone';
+export const ZONE_SLUG = 'zone';
+
+/**
+ * Build the external ids (device + feature factory) of an Airzone zone.
+ * @param {import('@gladysassistant/integration-sdk').GladysIntegration} gladys
+ * @param {string} deviceId Airzone device id
+ * @returns {object} `{ device, feature(featureKey) }`
+ */
+export function zoneExternalIds(gladys, deviceId) {
+  return gladys.externalIds(ZONE_SLUG, String(deviceId));
+}
 
 /**
  * @param {import('@gladysassistant/integration-sdk').GladysIntegration} gladys
@@ -25,7 +35,7 @@ const ZONE_SLUG = 'zone';
  * @returns {object} Gladys discovered device
  */
 export function convertDevice(gladys, zone) {
-  const ids = gladys.externalIds(ZONE_SLUG, String(zone.device_id));
+  const ids = zoneExternalIds(gladys, zone.device_id);
 
   return {
     name: zone.name || String(zone.device_id),
@@ -35,7 +45,7 @@ export function convertDevice(gladys, zone) {
     model: zone.ws_type || null,
     poll_frequency: POLL_FREQUENCY,
     should_poll: true,
-    features: buildZoneFeatures(ids.device, zone),
+    features: buildZoneFeatures(ids, zone),
     params: [
       {
         name: INSTALLATION_ID_PARAM,

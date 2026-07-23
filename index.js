@@ -17,7 +17,7 @@
 import { GladysIntegration, logger } from '@gladysassistant/integration-sdk';
 import { normalizeConfig } from './src/config.js';
 import { AirzoneCloudClient } from './src/airzone/client.js';
-import { convertDevice, getInstallationId } from './src/devices/convertDevice.js';
+import { convertDevice, getInstallationId, zoneExternalIds } from './src/devices/convertDevice.js';
 import { buildPollStates, buildSetZoneChange } from './src/devices/zone.js';
 
 const gladys = new GladysIntegration();
@@ -101,7 +101,7 @@ gladys.onPoll(async (device) => {
   const installationId = getInstallationId(device);
 
   const status = await airzone.getZoneStatus(deviceId, installationId);
-  const states = buildPollStates(device.external_id, status);
+  const states = buildPollStates(zoneExternalIds(gladys, deviceId), status);
   if (states.length > 0) {
     await gladys.publishStates(states);
   }

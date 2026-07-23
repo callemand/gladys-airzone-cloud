@@ -126,16 +126,17 @@ function getTemperatureBounds(status) {
 
 /**
  * Build the Gladys features of an Airzone zone.
- * @param {string} externalId external id of the Gladys device
+ * @param {object} ids external ids of the Gladys device (from gladys.externalIds()):
+ *   `{ device, feature(featureKey) }`
  * @param {object} zone Airzone zone entry (annotated with a `status` object)
  * @returns {Array} Gladys device features
  */
-export function buildZoneFeatures(externalId, zone) {
+export function buildZoneFeatures(ids, zone) {
   const { min, max } = getTemperatureBounds(zone.status);
   const features = [
     {
       name: 'Power',
-      external_id: `${externalId}:${FEATURE_CODES.POWER}`,
+      external_id: ids.feature(FEATURE_CODES.POWER),
       read_only: false,
       has_feedback: true,
       min: 0,
@@ -151,7 +152,7 @@ export function buildZoneFeatures(externalId, zone) {
   if (controlsMode(zone.status)) {
     features.push({
       name: 'Mode',
-      external_id: `${externalId}:${FEATURE_CODES.MODE}`,
+      external_id: ids.feature(FEATURE_CODES.MODE),
       read_only: false,
       has_feedback: true,
       min: 0,
@@ -164,7 +165,7 @@ export function buildZoneFeatures(externalId, zone) {
   features.push(
     {
       name: 'Temperature',
-      external_id: `${externalId}:${FEATURE_CODES.TEMPERATURE}`,
+      external_id: ids.feature(FEATURE_CODES.TEMPERATURE),
       read_only: false,
       has_feedback: true,
       min,
@@ -175,7 +176,7 @@ export function buildZoneFeatures(externalId, zone) {
     },
     {
       name: 'Room temperature',
-      external_id: `${externalId}:${FEATURE_CODES.ROOM_TEMPERATURE}`,
+      external_id: ids.feature(FEATURE_CODES.ROOM_TEMPERATURE),
       read_only: true,
       keep_history: true,
       has_feedback: false,
@@ -193,23 +194,24 @@ export function buildZoneFeatures(externalId, zone) {
 /**
  * Build the Gladys states of the features from a zone status. States without a
  * known value (e.g. an unknown Airzone mode) are skipped.
- * @param {string} deviceExternalId external id of the Gladys device
+ * @param {object} ids external ids of the Gladys device (from gladys.externalIds()):
+ *   `{ device, feature(featureKey) }`
  * @param {object} status Airzone zone status
  * @returns {Array} states for gladys.publishStates()
  */
-export function buildPollStates(deviceExternalId, status) {
+export function buildPollStates(ids, status) {
   const fields = modeTemperatureFields(status);
   const states = [
     {
-      device_feature_external_id: `${deviceExternalId}:${FEATURE_CODES.POWER}`,
+      device_feature_external_id: ids.feature(FEATURE_CODES.POWER),
       state: getParam(status, 'power') ? 1 : 0,
     },
     {
-      device_feature_external_id: `${deviceExternalId}:${FEATURE_CODES.TEMPERATURE}`,
+      device_feature_external_id: ids.feature(FEATURE_CODES.TEMPERATURE),
       state: toNumber(getTemperature(status, fields.setpoint)),
     },
     {
-      device_feature_external_id: `${deviceExternalId}:${FEATURE_CODES.ROOM_TEMPERATURE}`,
+      device_feature_external_id: ids.feature(FEATURE_CODES.ROOM_TEMPERATURE),
       state: toNumber(getTemperature(status, 'local_temp')),
     },
   ];
@@ -219,7 +221,7 @@ export function buildPollStates(deviceExternalId, status) {
   if (controlsMode(status)) {
     const mode = MODES_AIRZONE_TO_GLADYS[toNumber(getParam(status, 'mode'))];
     states.push({
-      device_feature_external_id: `${deviceExternalId}:${FEATURE_CODES.MODE}`,
+      device_feature_external_id: ids.feature(FEATURE_CODES.MODE),
       state: mode === undefined ? null : mode,
     });
   }
