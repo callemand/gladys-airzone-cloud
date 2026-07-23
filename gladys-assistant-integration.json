@@ -9,7 +9,7 @@
   "version": "1.0.0",
   "docker_image": "ghcr.io/callemand/gladys-airzone-cloud:1.0.0",
   "gladys_version": ">=4.62.0",
-  "cover_image": "https://raw.githubusercontent.com/callemand/gladys-airzone-cloud/master/cover.png",
+  "cover_image": "https://raw.githubusercontent.com/callemand/gladys-airzone-cloud/main/cover.png",
   "config_schema": [
     {
       "key": "email",
