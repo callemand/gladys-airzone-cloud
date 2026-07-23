@@ -1,0 +1,49 @@
+{
+  "manifest_version": 1,
+  "type": "device",
+  "name": "Airzone Cloud",
+  "description": {
+    "en": "Control your Airzone ducted air conditioning zones through the Airzone Cloud service.",
+    "fr": "Pilotez les zones de votre climatisation gainable Airzone via le service Airzone Cloud."
+  },
+  "version": "1.0.0",
+  "docker_image": "ghcr.io/callemand/gladys-airzone-cloud:1.0.0",
+  "gladys_version": ">=4.62.0",
+  "cover_image": "https://raw.githubusercontent.com/callemand/gladys-airzone-cloud/master/cover.png",
+  "config_schema": [
+    {
+      "key": "email",
+      "type": "string",
+      "label": {
+        "en": "Airzone Cloud email",
+        "fr": "E-mail Airzone Cloud"
+      },
+      "description": {
+        "en": "The email address of your Airzone Cloud account.",
+        "fr": "L'adresse e-mail de votre compte Airzone Cloud."
+      },
+      "placeholder": {
+        "en": "user@example.com",
+        "fr": "utilisateur@exemple.fr"
+      },
+      "required": true
+    },
+    {
+      "key": "password",
+      "type": "secret",
+      "label": {
+        "en": "Airzone Cloud password",
+        "fr": "Mot de passe Airzone Cloud"
+      },
+      "description": {
+        "en": "The password of your Airzone Cloud account.",
+        "fr": "Le mot de passe de votre compte Airzone Cloud."
+      },
+      "placeholder": {
+        "en": "••••••••",
+        "fr": "••••••••"
+      },
+      "required": true
+    }
+  ]
+}
