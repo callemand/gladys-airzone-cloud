@@ -17,14 +17,20 @@ template with the JavaScript SDK
 - Lists every zone of the Airzone Cloud account (installations, groups and
   systems are flattened to their zones) and publishes them as **discovered
   devices**: the user creates them from the Gladys Discovery screen.
-- Each **zone** exposes four features:
+- Each **zone** exposes these features:
 
-  | Feature          | Category / type                           | Mapping                                         |
-  | ---------------- | ----------------------------------------- | ----------------------------------------------- |
-  | Power            | `air-conditioning` / `binary`             | Airzone `power`                                 |
-  | Mode             | `air-conditioning` / `mode`               | Airzone `mode` (cool / heat / fan / dry / auto) |
-  | Temperature      | `air-conditioning` / `target-temperature` | Airzone `setpoint`, bounded by the zone range   |
-  | Room temperature | `temperature-sensor` / `decimal`          | Airzone `local_temp` (read-only, history kept)  |
+  | Feature          | Category / type                           | Mapping                                                        |
+  | ---------------- | ----------------------------------------- | -------------------------------------------------------------- |
+  | Power            | `air-conditioning` / `binary`             | Airzone `power`                                                |
+  | Mode             | `air-conditioning` / `mode`               | Airzone `mode` (cool / heat / fan / dry / auto)                |
+  | Temperature      | `air-conditioning` / `target-temperature` | Airzone `setpoint`, bounded by the zone range                  |
+  | Room temperature | `temperature-sensor` / `decimal`          | Airzone `local_temp` (read-only, history kept)                 |
+  | Humidity         | `humidity-sensor` / `decimal`             | Airzone `humidity` (read-only, history kept)                   |
+  | PM2.5 / PM10     | `pm25-sensor` / `pm10-sensor` / `decimal` | Airzone `aqpm2_5` / `aqpm10` — only when the zone reports them |
+
+  The **Mode** feature is exposed only on the master zone (the one that reports
+  `mode_available`); the particulate features appear only on zones that ship an
+  air-quality sensor.
 
 - Zones are **polled every 10 seconds** and the states are pushed back to Gladys.
 - User commands are written back with `PATCH /devices/{id}` (`{ param, value, installation_id }`).

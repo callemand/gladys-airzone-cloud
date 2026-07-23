@@ -6,12 +6,14 @@ This integration connects Gladys Assistant to **Airzone Cloud** to control your
 Airzone ducted air conditioning zones from Gladys.
 
 Once configured, every zone of your Airzone Cloud account appears in the Gladys
-**Discovery** screen. Each zone exposes four features:
+**Discovery** screen. Each zone exposes these features:
 
 - **Power** — turn the zone on or off;
-- **Mode** — cooling, heating, fan, drying or auto;
+- **Mode** — cooling, heating, fan, drying or auto (on the master zone only);
 - **Temperature** — the target temperature, within the min/max bounds of the zone;
-- **Room temperature** — the current temperature measured in the zone (read-only).
+- **Room temperature** — the current temperature measured in the zone (read-only);
+- **Humidity** — the relative humidity measured in the zone (read-only);
+- **PM2.5 / PM10** — particulate air quality, only on zones fitted with an air-quality sensor (read-only).
 
 Zone states are refreshed every 10 seconds, so changes made from the Airzone
 thermostat or the Airzone Cloud app show up in Gladys shortly after.

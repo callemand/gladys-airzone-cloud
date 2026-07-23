@@ -40,6 +40,11 @@ export const ZONE_STATUS = {
   setpoint_air_heat: { celsius: 21, fah: 70 },
   range_sp_hot_air_min: { celsius: 16, fah: 61 },
   range_sp_hot_air_max: { celsius: 30, fah: 86 },
+  humidity: 42,
+  // aq_present but no particulate sensor: values stay null (real-world case).
+  aq_present: true,
+  aqpm2_5: null,
+  aqpm10: null,
 };
 
 // A non-master zone (no mode_available): same system mode, but it cannot change
@@ -51,4 +56,20 @@ export const REGULAR_ZONE_STATUS = {
   setpoint_air_cool: { celsius: 25, fah: 77 },
   range_sp_cool_air_min: { celsius: 18, fah: 64 },
   range_sp_cool_air_max: { celsius: 30, fah: 86 },
+  humidity: 55,
+};
+
+// A zone that actually ships a particulate sensor (rare): PM2.5 / PM10 report
+// numeric values, so the air-quality features are exposed.
+export const AIR_QUALITY_ZONE_STATUS = {
+  power: true,
+  mode: 2,
+  local_temp: { celsius: 23, fah: 73 },
+  setpoint_air_cool: { celsius: 24, fah: 75 },
+  range_sp_cool_air_min: { celsius: 18, fah: 64 },
+  range_sp_cool_air_max: { celsius: 30, fah: 86 },
+  humidity: 48,
+  aq_present: true,
+  aqpm2_5: 12,
+  aqpm10: 20,
 };

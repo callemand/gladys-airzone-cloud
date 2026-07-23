@@ -176,6 +176,7 @@ test('the integration discovers, polls and controls Airzone zones', async (t) =>
         `ext:${SELECTOR}:zone:zone-1:mode`,
         `ext:${SELECTOR}:zone:zone-1:temperature`,
         `ext:${SELECTOR}:zone:zone-1:room-temperature`,
+        `ext:${SELECTOR}:zone:zone-1:humidity`,
       ],
     );
   });
@@ -211,6 +212,7 @@ test('the integration discovers, polls and controls Airzone zones', async (t) =>
       { device_feature_external_id: `ext:${SELECTOR}:zone:zone-1:power`, state: 1 },
       { device_feature_external_id: `ext:${SELECTOR}:zone:zone-1:temperature`, state: 21 },
       { device_feature_external_id: `ext:${SELECTOR}:zone:zone-1:room-temperature`, state: 19.5 },
+      { device_feature_external_id: `ext:${SELECTOR}:zone:zone-1:humidity`, state: 42 },
       { device_feature_external_id: `ext:${SELECTOR}:zone:zone-1:mode`, state: AC_MODE.HEATING },
     ]);
 

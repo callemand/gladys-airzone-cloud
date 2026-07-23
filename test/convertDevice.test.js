@@ -25,7 +25,7 @@ test('convertDevice converts a zone', () => {
   assert.equal(device.model, 'ws_az');
   assert.equal(device.poll_frequency, 10000);
   assert.equal(device.should_poll, true);
-  assert.equal(device.features.length, 4);
+  assert.equal(device.features.length, 5);
   assert.deepEqual(device.params, [{ name: 'installationId', value: 'install-1' }]);
 });
 

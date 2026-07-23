@@ -6,13 +6,15 @@ Cette intégration connecte Gladys Assistant à **Airzone Cloud** pour piloter
 les zones de votre climatisation gainable Airzone depuis Gladys.
 
 Une fois configurée, toutes les zones de votre compte Airzone Cloud
-apparaissent dans l'écran **Découverte** de Gladys. Chaque zone expose quatre
-fonctionnalités :
+apparaissent dans l'écran **Découverte** de Gladys. Chaque zone expose les
+fonctionnalités suivantes :
 
 - **Marche/Arrêt** — allumer ou éteindre la zone ;
-- **Mode** — climatisation, chauffage, ventilation, déshumidification ou auto ;
+- **Mode** — climatisation, chauffage, ventilation, déshumidification ou auto (sur la zone maître uniquement) ;
 - **Température** — la température de consigne, dans les bornes min/max de la zone ;
-- **Température ambiante** — la température mesurée dans la zone (lecture seule).
+- **Température ambiante** — la température mesurée dans la zone (lecture seule) ;
+- **Humidité** — l'humidité relative mesurée dans la zone (lecture seule) ;
+- **PM2.5 / PM10** — la qualité de l'air (particules), uniquement sur les zones équipées d'un capteur (lecture seule).
 
 L'état des zones est rafraîchi toutes les 10 secondes : un changement fait
 depuis le thermostat Airzone ou l'application Airzone Cloud apparaît dans Gladys

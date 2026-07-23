@@ -28,6 +28,18 @@ export const DEFAULT_TEMPERATURE_BOUNDS = {
   MAX: 30,
 };
 
+// Relative humidity sensor bounds (percent).
+export const HUMIDITY_BOUNDS = {
+  MIN: 0,
+  MAX: 100,
+};
+
+// Particulate-matter sensor bounds (µg/m³).
+export const PM_BOUNDS = {
+  MIN: 0,
+  MAX: 1000,
+};
+
 // Devices are polled every 10 seconds, like the built-in cloud services
 // (must be one of the Gladys DEVICE_POLL_FREQUENCIES values, in milliseconds).
 export const POLL_FREQUENCY = 10 * 1000;
@@ -115,4 +127,15 @@ export const FEATURE_CODES = {
   MODE: 'mode',
   TEMPERATURE: 'temperature',
   ROOM_TEMPERATURE: 'room-temperature',
+  HUMIDITY: 'humidity',
+  PM25: 'pm25',
+  PM10: 'pm10',
+};
+
+// Air-quality feature code -> Airzone status field. Particulate readings are
+// only exposed when the zone actually reports a numeric value (many units
+// advertise `aq_present` but ship no particulate sensor -> null forever).
+export const AIR_QUALITY_FIELDS = {
+  [FEATURE_CODES.PM25]: 'aqpm2_5',
+  [FEATURE_CODES.PM10]: 'aqpm10',
 };
