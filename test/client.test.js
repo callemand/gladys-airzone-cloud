@@ -3,7 +3,12 @@ import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 
 import { AirzoneCloudClient } from '../src/airzone/client.js';
-import { INSTALLATIONS_RESPONSE, INSTALLATION_DETAIL_RESPONSE, ZONE_STATUS } from './fixtures.js';
+import {
+  INSTALLATIONS_RESPONSE,
+  INSTALLATION_DETAIL_RESPONSE,
+  ZONE_STATUS,
+  AIR_QUALITY_STATUS,
+} from './fixtures.js';
 
 // Tiny fake Airzone Cloud API. `behaviour` is mutated by the tests.
 function startFakeAirzone(behaviour) {
@@ -51,6 +56,10 @@ function startFakeAirzone(behaviour) {
         respond(200, { status: ZONE_STATUS });
         return;
       }
+      if (url.pathname === '/devices/airq-1/status') {
+        respond(200, { status: AIR_QUALITY_STATUS });
+        return;
+      }
       if (url.pathname === '/devices/zone-1' && req.method === 'PATCH') {
         respond(200, {});
         return;
@@ -94,6 +103,16 @@ test('AirzoneCloudClient', async (t) => {
     assert.deepEqual(zones[0].status, ZONE_STATUS);
     // Every authenticated request carried the access token.
     assert.equal(requests.at(-1).authorization, 'Bearer access-1');
+  });
+
+  await t.test('listAirQualitySensors keeps only az_airqsensor devices', async () => {
+    const sensors = await client.listAirQualitySensors();
+    assert.deepEqual(
+      sensors.map((s) => s.device_id),
+      ['airq-1'],
+    );
+    assert.equal(sensors[0].installationId, 'install-1');
+    assert.deepEqual(sensors[0].status, AIR_QUALITY_STATUS);
   });
 
   await t.test('getZoneStatus passes the installation id and unwraps the status', async () => {

@@ -1,6 +1,7 @@
 // Shared Airzone Cloud API fixtures (shapes taken from the real Airzone API:
 // temperatures are `{ celsius, fah }` objects, setpoints/ranges are per-mode,
-// and only the master zone advertises `mode_available`).
+// only the master zone advertises `mode_available`, and air quality lives on a
+// dedicated az_airqsensor device).
 
 export const ZONE_DEVICE = {
   device_id: 'zone-1',
@@ -15,16 +16,24 @@ export const SYSTEM_DEVICE = {
   type: 'az_system',
 };
 
+export const AIR_QUALITY_DEVICE = {
+  device_id: 'airq-1',
+  name: '',
+  type: 'az_airqsensor',
+  ws_type: 'ws_aq',
+};
+
 // GET /installations
 export const INSTALLATIONS_RESPONSE = {
   installations: [{ installation_id: 'install-1' }],
 };
 
-// GET /installations/install-1 : a group with one zone and one system.
+// GET /installations/install-1 : a group with one zone, one system and one
+// air-quality sensor.
 export const INSTALLATION_DETAIL_RESPONSE = {
   groups: [
     {
-      devices: [ZONE_DEVICE, SYSTEM_DEVICE],
+      devices: [ZONE_DEVICE, SYSTEM_DEVICE, AIR_QUALITY_DEVICE],
     },
   ],
 };
@@ -41,10 +50,6 @@ export const ZONE_STATUS = {
   range_sp_hot_air_min: { celsius: 16, fah: 61 },
   range_sp_hot_air_max: { celsius: 30, fah: 86 },
   humidity: 42,
-  // aq_present but no particulate sensor: values stay null (real-world case).
-  aq_present: true,
-  aqpm2_5: null,
-  aqpm10: null,
 };
 
 // A non-master zone (no mode_available): same system mode, but it cannot change
@@ -59,17 +64,15 @@ export const REGULAR_ZONE_STATUS = {
   humidity: 55,
 };
 
-// A zone that actually ships a particulate sensor (rare): PM2.5 / PM10 report
-// numeric values, so the air-quality features are exposed.
-export const AIR_QUALITY_ZONE_STATUS = {
-  power: true,
-  mode: 2,
-  local_temp: { celsius: 23, fah: 73 },
-  setpoint_air_cool: { celsius: 24, fah: 75 },
-  range_sp_cool_air_min: { celsius: 18, fah: 64 },
-  range_sp_cool_air_max: { celsius: 30, fah: 86 },
-  humidity: 48,
-  aq_present: true,
-  aqpm2_5: 12,
-  aqpm10: 20,
+// GET /devices/airq-1/status : the air-quality sensor readings.
+export const AIR_QUALITY_STATUS = {
+  aq_temp: { celsius: 26.8, fah: 80 },
+  humidity: 38,
+  aq_co2: 798,
+  aqpm2_5: 2,
+  aqpm10: 8,
+  aq_tvoc: 1900,
+  aq_pressure: 1018,
+  aq_score: 64,
+  aq_quality: 'regular',
 };

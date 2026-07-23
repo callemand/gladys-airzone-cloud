@@ -11,7 +11,12 @@ import { fileURLToPath } from 'node:url';
 import { WebSocketServer } from 'ws';
 
 import { AC_MODE } from '../src/constants.js';
-import { INSTALLATIONS_RESPONSE, INSTALLATION_DETAIL_RESPONSE, ZONE_STATUS } from './fixtures.js';
+import {
+  INSTALLATIONS_RESPONSE,
+  INSTALLATION_DETAIL_RESPONSE,
+  ZONE_STATUS,
+  AIR_QUALITY_STATUS,
+} from './fixtures.js';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const SELECTOR = 'airzone-test';
@@ -51,6 +56,8 @@ function startFakeAirzone() {
         res.end(JSON.stringify(INSTALLATION_DETAIL_RESPONSE));
       } else if (url.pathname === '/devices/zone-1/status') {
         res.end(JSON.stringify({ status: ZONE_STATUS }));
+      } else if (url.pathname === '/devices/airq-1/status') {
+        res.end(JSON.stringify({ status: AIR_QUALITY_STATUS }));
       } else {
         res.end(JSON.stringify({}));
       }
@@ -161,10 +168,11 @@ test('the integration discovers, polls and controls Airzone zones', async (t) =>
     assert.equal(login.body.password, 'secret');
 
     const devices = gladys.state.discoveredDevicePosts.at(-1);
-    assert.equal(devices.length, 1);
+    // One zone + one air-quality sensor.
+    assert.equal(devices.length, 2);
 
-    const zone = devices[0];
-    assert.equal(zone.external_id, `ext:${SELECTOR}:zone:zone-1`);
+    const zone = devices.find((d) => d.external_id === `ext:${SELECTOR}:zone:zone-1`);
+    assert.ok(zone, 'the zone was published');
     assert.equal(zone.name, 'Living room');
     assert.equal(zone.poll_frequency, 10000);
     assert.equal(zone.should_poll, true);
@@ -179,16 +187,24 @@ test('the integration discovers, polls and controls Airzone zones', async (t) =>
         `ext:${SELECTOR}:zone:zone-1:humidity`,
       ],
     );
+
+    const airq = devices.find((d) => d.external_id === `ext:${SELECTOR}:airq:airq-1`);
+    assert.ok(airq, 'the air-quality sensor was published');
+    assert.equal(airq.name, 'Air quality');
+    assert.deepEqual(
+      airq.features.map((f) => f.external_id.split(':').pop()),
+      ['temperature', 'humidity', 'co2', 'pm25', 'pm10', 'tvoc', 'pressure', 'air-quality-index'],
+    );
   });
 
-  await t.test('a scan request republishes the zones', async () => {
+  await t.test('a scan request republishes the devices', async () => {
     const before = gladys.state.discoveredDevicePosts.length;
     send('external-integration.scan-request', {});
     await waitUntil(
       () => gladys.state.discoveredDevicePosts.length > before,
       `scan republish\n${output}`,
     );
-    assert.equal(gladys.state.discoveredDevicePosts.at(-1).length, 1);
+    assert.equal(gladys.state.discoveredDevicePosts.at(-1).length, 2);
   });
 
   const pollDevice = {

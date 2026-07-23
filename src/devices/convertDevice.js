@@ -14,10 +14,12 @@
 
 import { POLL_FREQUENCY } from '../constants.js';
 import { buildZoneFeatures } from './zone.js';
+import { buildAirQualityFeatures } from './airQualitySensor.js';
 
 export const INSTALLATION_ID_PARAM = 'installationId';
 
 export const ZONE_SLUG = 'zone';
+export const AIR_QUALITY_SLUG = 'airq';
 
 /**
  * Build the external ids (device + feature factory) of an Airzone zone.
@@ -27,6 +29,16 @@ export const ZONE_SLUG = 'zone';
  */
 export function zoneExternalIds(gladys, deviceId) {
   return gladys.externalIds(ZONE_SLUG, String(deviceId));
+}
+
+/**
+ * Build the external ids of an Airzone air-quality sensor.
+ * @param {import('@gladysassistant/integration-sdk').GladysIntegration} gladys
+ * @param {string} deviceId Airzone device id
+ * @returns {object} `{ device, feature(featureKey) }`
+ */
+export function airQualityExternalIds(gladys, deviceId) {
+  return gladys.externalIds(AIR_QUALITY_SLUG, String(deviceId));
 }
 
 /**
@@ -50,6 +62,30 @@ export function convertDevice(gladys, zone) {
       {
         name: INSTALLATION_ID_PARAM,
         value: zone.installationId,
+      },
+    ],
+  };
+}
+
+/**
+ * @param {import('@gladysassistant/integration-sdk').GladysIntegration} gladys
+ * @param {object} sensor Airzone air-quality sensor entry (installationId + status)
+ * @returns {object} Gladys discovered device
+ */
+export function convertAirQualitySensor(gladys, sensor) {
+  const ids = airQualityExternalIds(gladys, sensor.device_id);
+
+  return {
+    name: sensor.name || 'Air quality',
+    external_id: ids.device,
+    model: sensor.ws_type || null,
+    poll_frequency: POLL_FREQUENCY,
+    should_poll: true,
+    features: buildAirQualityFeatures(ids),
+    params: [
+      {
+        name: INSTALLATION_ID_PARAM,
+        value: sensor.installationId,
       },
     ],
   };

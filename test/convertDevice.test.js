@@ -1,8 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { convertDevice, getInstallationId } from '../src/devices/convertDevice.js';
-import { ZONE_DEVICE, ZONE_STATUS } from './fixtures.js';
+import {
+  convertDevice,
+  convertAirQualitySensor,
+  getInstallationId,
+} from '../src/devices/convertDevice.js';
+import { ZONE_DEVICE, ZONE_STATUS, AIR_QUALITY_DEVICE, AIR_QUALITY_STATUS } from './fixtures.js';
 
 // Minimal stand-in for the SDK: only externalIds() is used by convertDevice
 // (same contract as GladysIntegration#externalIds).
@@ -26,6 +30,20 @@ test('convertDevice converts a zone', () => {
   assert.equal(device.poll_frequency, 10000);
   assert.equal(device.should_poll, true);
   assert.equal(device.features.length, 5);
+  assert.deepEqual(device.params, [{ name: 'installationId', value: 'install-1' }]);
+});
+
+test('convertAirQualitySensor converts an az_airqsensor', () => {
+  const device = convertAirQualitySensor(gladys, {
+    ...AIR_QUALITY_DEVICE,
+    installationId: 'install-1',
+    status: AIR_QUALITY_STATUS,
+  });
+
+  // Empty API name -> friendly default; airq slug in the external id.
+  assert.equal(device.name, 'Air quality');
+  assert.equal(device.external_id, 'ext:airzone-cloud:airq:airq-1');
+  assert.equal(device.features.length, 8);
   assert.deepEqual(device.params, [{ name: 'installationId', value: 'install-1' }]);
 });
 

@@ -34,11 +34,12 @@ export const HUMIDITY_BOUNDS = {
   MAX: 100,
 };
 
-// Particulate-matter sensor bounds (µg/m³).
-export const PM_BOUNDS = {
-  MIN: 0,
-  MAX: 1000,
-};
+// Air-quality sensor bounds.
+export const PM_BOUNDS = { MIN: 0, MAX: 1000 }; // µg/m³
+export const CO2_BOUNDS = { MIN: 0, MAX: 5000 }; // ppm
+export const TVOC_BOUNDS = { MIN: 0, MAX: 60000 }; // ppb
+export const PRESSURE_BOUNDS = { MIN: 800, MAX: 1200 }; // hPa
+export const AIR_QUALITY_INDEX_BOUNDS = { MIN: 0, MAX: 100 }; // Airzone aq_score
 
 // Devices are polled every 10 seconds, like the built-in cloud services
 // (must be one of the Gladys DEVICE_POLL_FREQUENCIES values, in milliseconds).
@@ -49,11 +50,12 @@ export const AIRZONE_ENDPOINT = (
   process.env.AIRZONE_ENDPOINT || 'https://m.airzonecloud.com/api/v1'
 ).replace(/\/+$/, '');
 
-// Airzone device types delivered by the API. Only zones are exposed here;
-// systems are used to enumerate their child zones.
+// Airzone device types delivered by the API. Zones and air-quality sensors are
+// exposed as Gladys devices; systems are used to enumerate their child zones.
 export const AIRZONE_DEVICE_TYPES = {
   SYSTEM: 'az_system',
   ZONE: 'az_zone',
+  AIR_QUALITY: 'az_airqsensor',
 };
 
 // Airzone operation mode codes (as delivered/accepted over the REST API).
@@ -128,14 +130,11 @@ export const FEATURE_CODES = {
   TEMPERATURE: 'temperature',
   ROOM_TEMPERATURE: 'room-temperature',
   HUMIDITY: 'humidity',
+  // Air-quality sensor (az_airqsensor) features.
+  CO2: 'co2',
   PM25: 'pm25',
   PM10: 'pm10',
-};
-
-// Air-quality feature code -> Airzone status field. Particulate readings are
-// only exposed when the zone actually reports a numeric value (many units
-// advertise `aq_present` but ship no particulate sensor -> null forever).
-export const AIR_QUALITY_FIELDS = {
-  [FEATURE_CODES.PM25]: 'aqpm2_5',
-  [FEATURE_CODES.PM10]: 'aqpm10',
+  TVOC: 'tvoc',
+  PRESSURE: 'pressure',
+  AIR_QUALITY_INDEX: 'air-quality-index',
 };

@@ -66,17 +66,40 @@ export class AirzoneCloudClient {
    * @returns {Promise<Array>} zone entries
    */
   async listZones() {
+    const zones = await this.#listDevices([AIRZONE_DEVICE_TYPES.ZONE]);
+    logger.debug(`${zones.length} zones loaded`);
+    return zones;
+  }
+
+  /**
+   * List all Airzone Cloud air-quality sensors of the account (az_airqsensor),
+   * each annotated with its installationId and its live status.
+   * @returns {Promise<Array>} air-quality sensor entries
+   */
+  async listAirQualitySensors() {
+    const sensors = await this.#listDevices([AIRZONE_DEVICE_TYPES.AIR_QUALITY]);
+    logger.debug(`${sensors.length} air-quality sensors loaded`);
+    return sensors;
+  }
+
+  /**
+   * Flatten the installations -> groups -> devices tree, keeping only the given
+   * device types, and annotate each with its installationId and live status.
+   * @param {Array<string>} types Airzone device types to keep
+   * @returns {Promise<Array>} device entries
+   */
+  async #listDevices(types) {
     const { installations = [] } = await this.#authenticatedRequest('installations');
 
-    const zones = [];
+    const devices = [];
     await Promise.all(
       installations.map(async (installation) => {
         const installationId = installation.installation_id;
         const detail = await this.#authenticatedRequest(`installations/${installationId}`);
         (detail.groups || []).forEach((group) => {
           (group.devices || []).forEach((device) => {
-            if (device.type === AIRZONE_DEVICE_TYPES.ZONE) {
-              zones.push({ ...device, installationId });
+            if (types.includes(device.type)) {
+              devices.push({ ...device, installationId });
             }
           });
         });
@@ -84,13 +107,12 @@ export class AirzoneCloudClient {
     );
 
     await Promise.all(
-      zones.map(async (zone) => {
-        zone.status = await this.getZoneStatus(zone.device_id, zone.installationId);
+      devices.map(async (device) => {
+        device.status = await this.getZoneStatus(device.device_id, device.installationId);
       }),
     );
 
-    logger.debug(`${zones.length} zones loaded`);
-    return zones;
+    return devices;
   }
 
   /**

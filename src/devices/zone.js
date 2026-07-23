@@ -16,7 +16,6 @@ import {
 
 import {
   AC_MODE,
-  AIR_QUALITY_FIELDS,
   AIRZONE_MODE,
   AIRZONE_PARAM,
   AIRZONE_UNITS,
@@ -24,7 +23,6 @@ import {
   FEATURE_CODES,
   HUMIDITY_BOUNDS,
   MODE_TEMPERATURE_FIELDS,
-  PM_BOUNDS,
   ROOM_TEMPERATURE_BOUNDS,
 } from '../constants.js';
 
@@ -97,17 +95,6 @@ function modeTemperatureFields(status) {
  */
 function controlsMode(status) {
   return Array.isArray((status || {}).mode_available);
-}
-
-/**
- * Whether the zone reports a numeric particulate value for the given air
- * quality field. Many units advertise `aq_present` yet never ship a value.
- * @param {object} status Airzone zone status
- * @param {string} field Airzone status field (e.g. 'aqpm2_5')
- * @returns {boolean}
- */
-function reportsAirQuality(status, field) {
-  return typeof toNumber(getParam(status, field)) === 'number';
 }
 
 /**
@@ -214,37 +201,6 @@ export function buildZoneFeatures(ids, zone) {
     },
   );
 
-  // Particulate sensors are exposed only when the zone actually reports a
-  // value (see reportsAirQuality).
-  const airQualityFeatures = [
-    {
-      code: FEATURE_CODES.PM25,
-      name: 'PM2.5',
-      category: DEVICE_FEATURE_CATEGORIES.PM25_SENSOR,
-    },
-    {
-      code: FEATURE_CODES.PM10,
-      name: 'PM10',
-      category: DEVICE_FEATURE_CATEGORIES.PM10_SENSOR,
-    },
-  ];
-  airQualityFeatures.forEach(({ code, name, category }) => {
-    if (reportsAirQuality(zone.status, AIR_QUALITY_FIELDS[code])) {
-      features.push({
-        name,
-        external_id: ids.feature(code),
-        read_only: true,
-        keep_history: true,
-        has_feedback: false,
-        min: PM_BOUNDS.MIN,
-        max: PM_BOUNDS.MAX,
-        unit: DEVICE_FEATURE_UNITS.MICROGRAM_PER_CUBIC_METER,
-        category,
-        type: DEVICE_FEATURE_TYPES.SENSOR.DECIMAL,
-      });
-    }
-  });
-
   return features;
 }
 
@@ -274,14 +230,6 @@ export function buildPollStates(ids, status) {
     {
       device_feature_external_id: ids.feature(FEATURE_CODES.HUMIDITY),
       state: toNumber(getParam(status, 'humidity')),
-    },
-    {
-      device_feature_external_id: ids.feature(FEATURE_CODES.PM25),
-      state: toNumber(getParam(status, AIR_QUALITY_FIELDS[FEATURE_CODES.PM25])),
-    },
-    {
-      device_feature_external_id: ids.feature(FEATURE_CODES.PM10),
-      state: toNumber(getParam(status, AIR_QUALITY_FIELDS[FEATURE_CODES.PM10])),
     },
   ];
 

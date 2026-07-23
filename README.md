@@ -14,23 +14,34 @@ template with the JavaScript SDK
 - Logs in to Airzone Cloud with the email / password filled in the integration
   settings (the password is a `secret` config field, never sent back to the
   frontend).
-- Lists every zone of the Airzone Cloud account (installations, groups and
-  systems are flattened to their zones) and publishes them as **discovered
+- Lists every zone and air-quality sensor of the Airzone Cloud account
+  (installations and groups are flattened) and publishes them as **discovered
   devices**: the user creates them from the Gladys Discovery screen.
-- Each **zone** exposes these features:
+- Each **zone** (`az_zone`) exposes these features:
 
-  | Feature          | Category / type                           | Mapping                                                        |
-  | ---------------- | ----------------------------------------- | -------------------------------------------------------------- |
-  | Power            | `air-conditioning` / `binary`             | Airzone `power`                                                |
-  | Mode             | `air-conditioning` / `mode`               | Airzone `mode` (cool / heat / fan / dry / auto)                |
-  | Temperature      | `air-conditioning` / `target-temperature` | Airzone `setpoint`, bounded by the zone range                  |
-  | Room temperature | `temperature-sensor` / `decimal`          | Airzone `local_temp` (read-only, history kept)                 |
-  | Humidity         | `humidity-sensor` / `decimal`             | Airzone `humidity` (read-only, history kept)                   |
-  | PM2.5 / PM10     | `pm25-sensor` / `pm10-sensor` / `decimal` | Airzone `aqpm2_5` / `aqpm10` — only when the zone reports them |
+  | Feature          | Category / type                           | Mapping                                         |
+  | ---------------- | ----------------------------------------- | ----------------------------------------------- |
+  | Power            | `air-conditioning` / `binary`             | Airzone `power`                                 |
+  | Mode             | `air-conditioning` / `mode`               | Airzone `mode` (cool / heat / fan / dry / auto) |
+  | Temperature      | `air-conditioning` / `target-temperature` | Airzone `setpoint`, bounded by the zone range   |
+  | Room temperature | `temperature-sensor` / `decimal`          | Airzone `local_temp` (read-only, history kept)  |
+  | Humidity         | `humidity-sensor` / `decimal`             | Airzone `humidity` (read-only, history kept)    |
 
   The **Mode** feature is exposed only on the master zone (the one that reports
-  `mode_available`); the particulate features appear only on zones that ship an
-  air-quality sensor.
+  `mode_available`).
+
+- Each **air-quality sensor** (`az_airqsensor`) is published as its own device
+  with these read-only sensors (history kept):
+
+  | Feature           | Category / type                | Mapping                      |
+  | ----------------- | ------------------------------ | ---------------------------- |
+  | Temperature       | `temperature-sensor` / decimal | Airzone `aq_temp`            |
+  | Humidity          | `humidity-sensor` / decimal    | Airzone `humidity`           |
+  | CO2               | `co2-sensor` / integer (ppm)   | Airzone `aq_co2`             |
+  | PM2.5 / PM10      | `pm25-sensor` / `pm10-sensor`  | Airzone `aqpm2_5` / `aqpm10` |
+  | TVOC              | `voc-sensor` / decimal (ppb)   | Airzone `aq_tvoc`            |
+  | Pressure          | `pressure-sensor` / decimal    | Airzone `aq_pressure` (hPa)  |
+  | Air quality index | `airquality-sensor` / aqi      | Airzone `aq_score` (0-100)   |
 
 - Zones are **polled every 10 seconds** and the states are pushed back to Gladys.
 - User commands are written back with `PATCH /devices/{id}` (`{ param, value, installation_id }`).
@@ -47,8 +58,9 @@ template with the JavaScript SDK
 ├─ index.js                          # SDK bootstrap + event wiring
 ├─ src/
 │  ├─ airzone/client.js              # Airzone Cloud API client (fetch)
-│  ├─ devices/convertDevice.js       # Airzone zone -> Gladys discovery payload
+│  ├─ devices/convertDevice.js       # Airzone device -> Gladys discovery payload
 │  ├─ devices/zone.js                # zone features + value mappings
+│  ├─ devices/airQualitySensor.js    # air-quality sensor features + states
 │  ├─ constants.js                   # Airzone constants (+ AC modes, poll frequency)
 │  └─ config.js                      # config defaults + normalization
 ├─ test/                             # node:test unit + end-to-end tests

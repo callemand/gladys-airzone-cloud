@@ -13,8 +13,12 @@ fonctionnalités suivantes :
 - **Mode** — climatisation, chauffage, ventilation, déshumidification ou auto (sur la zone maître uniquement) ;
 - **Température** — la température de consigne, dans les bornes min/max de la zone ;
 - **Température ambiante** — la température mesurée dans la zone (lecture seule) ;
-- **Humidité** — l'humidité relative mesurée dans la zone (lecture seule) ;
-- **PM2.5 / PM10** — la qualité de l'air (particules), uniquement sur les zones équipées d'un capteur (lecture seule).
+- **Humidité** — l'humidité relative mesurée dans la zone (lecture seule).
+
+Si votre installation comprend un capteur de qualité d'air Airzone, il est
+publié comme un device dédié exposant température, humidité, CO2, PM2.5, PM10,
+COV (TVOC), pression et un indice global de qualité d'air (tout en lecture
+seule, avec historique).
 
 L'état des zones est rafraîchi toutes les 10 secondes : un changement fait
 depuis le thermostat Airzone ou l'application Airzone Cloud apparaît dans Gladys

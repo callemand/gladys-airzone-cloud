@@ -17,8 +17,16 @@
 import { GladysIntegration, logger } from '@gladysassistant/integration-sdk';
 import { normalizeConfig } from './src/config.js';
 import { AirzoneCloudClient } from './src/airzone/client.js';
-import { convertDevice, getInstallationId, zoneExternalIds } from './src/devices/convertDevice.js';
+import {
+  AIR_QUALITY_SLUG,
+  airQualityExternalIds,
+  convertAirQualitySensor,
+  convertDevice,
+  getInstallationId,
+  zoneExternalIds,
+} from './src/devices/convertDevice.js';
 import { buildPollStates, buildSetZoneChange } from './src/devices/zone.js';
+import { buildAirQualityPollStates } from './src/devices/airQualitySensor.js';
 
 const gladys = new GladysIntegration();
 const airzone = new AirzoneCloudClient();
@@ -27,23 +35,24 @@ const airzone = new AirzoneCloudClient();
 let config = normalizeConfig();
 
 /**
- * Extract the Airzone device id from a device external id
- * (`ext:<selector>:<type>:<deviceId>`, built with gladys.externalIds()).
+ * Split a device external id (`ext:<selector>:<slug>:<deviceId>`, built with
+ * gladys.externalIds()) into its type slug and Airzone device id.
+ * @returns {{ slug: string, deviceId: string }}
  */
-function parseDeviceId(externalId) {
+function parseExternalId(externalId) {
   const prefix = gladys.externalId('');
   if (!externalId || !externalId.startsWith(prefix)) {
     throw new Error(
       `Airzone device external_id is invalid: "${externalId}" should start with "${prefix}"`,
     );
   }
-  const deviceId = externalId.split(':').pop();
-  if (!deviceId || externalId.slice(prefix.length).split(':').length !== 2) {
+  const parts = externalId.slice(prefix.length).split(':');
+  if (parts.length !== 2 || !parts[0] || !parts[1]) {
     throw new Error(
-      `Airzone device external_id is invalid: "${externalId}" should be "${prefix}<type>:<deviceId>"`,
+      `Airzone device external_id is invalid: "${externalId}" should be "${prefix}<slug>:<deviceId>"`,
     );
   }
-  return deviceId;
+  return { slug: parts[0], deviceId: parts[1] };
 }
 
 /**
@@ -63,17 +72,26 @@ async function connectToAirzone() {
 }
 
 /**
- * Load the zones from Airzone Cloud and publish them as discovered devices.
+ * Load the zones and air-quality sensors from Airzone Cloud and publish them as
+ * discovered devices.
  */
 async function publishDevices() {
-  const zones = await airzone.listZones();
-  logger.info(`${zones.length} Airzone Cloud zones found`);
-  await gladys.publishDiscoveredDevices(zones.map((zone) => convertDevice(gladys, zone)));
+  const [zones, airQualitySensors] = await Promise.all([
+    airzone.listZones(),
+    airzone.listAirQualitySensors(),
+  ]);
+  logger.info(
+    `${zones.length} Airzone Cloud zones and ${airQualitySensors.length} air-quality sensors found`,
+  );
+  await gladys.publishDiscoveredDevices([
+    ...zones.map((zone) => convertDevice(gladys, zone)),
+    ...airQualitySensors.map((sensor) => convertAirQualitySensor(gladys, sensor)),
+  ]);
 }
 
 // --- Discovery: Gladys asks for the list of devices --------------------------
 gladys.onScanRequest(async () => {
-  logger.info('onScanRequest -> loading Airzone Cloud zones');
+  logger.info('onScanRequest -> loading Airzone Cloud devices');
   if (!airzone.isLoggedIn() && !(await connectToAirzone())) {
     throw new Error('Airzone Cloud is not configured');
   }
@@ -83,7 +101,7 @@ gladys.onScanRequest(async () => {
 // --- Command: the user acts on a controllable feature ------------------------
 gladys.onSetValue(async (device, feature, value) => {
   logger.info(`onSetValue <- ${feature.external_id} = ${value}`);
-  const deviceId = parseDeviceId(device.external_id);
+  const { deviceId } = parseExternalId(device.external_id);
   const installationId = getInstallationId(device);
   const featureCode = feature.external_id.split(':').pop();
 
@@ -97,11 +115,14 @@ gladys.onSetValue(async (device, feature, value) => {
 
 // --- Polling: Gladys asks to refresh a device --------------------------------
 gladys.onPoll(async (device) => {
-  const deviceId = parseDeviceId(device.external_id);
+  const { slug, deviceId } = parseExternalId(device.external_id);
   const installationId = getInstallationId(device);
 
   const status = await airzone.getZoneStatus(deviceId, installationId);
-  const states = buildPollStates(zoneExternalIds(gladys, deviceId), status);
+  const states =
+    slug === AIR_QUALITY_SLUG
+      ? buildAirQualityPollStates(airQualityExternalIds(gladys, deviceId), status)
+      : buildPollStates(zoneExternalIds(gladys, deviceId), status);
   if (states.length > 0) {
     await gladys.publishStates(states);
   }

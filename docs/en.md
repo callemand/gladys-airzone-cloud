@@ -12,8 +12,11 @@ Once configured, every zone of your Airzone Cloud account appears in the Gladys
 - **Mode** — cooling, heating, fan, drying or auto (on the master zone only);
 - **Temperature** — the target temperature, within the min/max bounds of the zone;
 - **Room temperature** — the current temperature measured in the zone (read-only);
-- **Humidity** — the relative humidity measured in the zone (read-only);
-- **PM2.5 / PM10** — particulate air quality, only on zones fitted with an air-quality sensor (read-only).
+- **Humidity** — the relative humidity measured in the zone (read-only).
+
+If your installation includes an Airzone air-quality sensor, it is published as
+its own device exposing temperature, humidity, CO2, PM2.5, PM10, TVOC, pressure
+and a global air-quality index (all read-only, with history).
 
 Zone states are refreshed every 10 seconds, so changes made from the Airzone
 thermostat or the Airzone Cloud app show up in Gladys shortly after.
