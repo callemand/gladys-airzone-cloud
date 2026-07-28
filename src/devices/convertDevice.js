@@ -18,6 +18,22 @@ import { buildAirQualityFeatures } from './airQualitySensor.js';
 
 export const INSTALLATION_ID_PARAM = 'installationId';
 
+/**
+ * Stamp an explicit, globally-unique selector on each feature.
+ *
+ * A Gladys device-feature `selector` is UNIQUE across the whole instance. When
+ * a feature is published without one, Gladys derives it from the name
+ * (e.g. "Power" -> "power"), which collides with any other device/integration
+ * exposing a feature with the same name. Basing it on the already-unique
+ * external_id (Gladys slugifies it, e.g. "ext-airzone-cloud-zone-<id>-power")
+ * keeps it globally unique.
+ * @param {Array} features Gladys features (each with an external_id)
+ * @returns {Array} the same features, each carrying a unique `selector`
+ */
+function withFeatureSelectors(features) {
+  return features.map((feature) => ({ ...feature, selector: feature.external_id }));
+}
+
 export const ZONE_SLUG = 'zone';
 export const AIR_QUALITY_SLUG = 'airq';
 
@@ -57,7 +73,7 @@ export function convertDevice(gladys, zone) {
     model: zone.ws_type || null,
     poll_frequency: POLL_FREQUENCY,
     should_poll: true,
-    features: buildZoneFeatures(ids, zone),
+    features: withFeatureSelectors(buildZoneFeatures(ids, zone)),
     params: [
       {
         name: INSTALLATION_ID_PARAM,
@@ -81,7 +97,7 @@ export function convertAirQualitySensor(gladys, sensor) {
     model: sensor.ws_type || null,
     poll_frequency: POLL_FREQUENCY,
     should_poll: true,
-    features: buildAirQualityFeatures(ids),
+    features: withFeatureSelectors(buildAirQualityFeatures(ids)),
     params: [
       {
         name: INSTALLATION_ID_PARAM,

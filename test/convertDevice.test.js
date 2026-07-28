@@ -33,6 +33,26 @@ test('convertDevice converts a zone', () => {
   assert.deepEqual(device.params, [{ name: 'installationId', value: 'install-1' }]);
 });
 
+test('every feature carries a unique selector based on its external_id', () => {
+  const zone = convertDevice(gladys, {
+    ...ZONE_DEVICE,
+    installationId: 'install-1',
+    status: ZONE_STATUS,
+  });
+  const airq = convertAirQualitySensor(gladys, {
+    ...AIR_QUALITY_DEVICE,
+    installationId: 'install-1',
+    status: AIR_QUALITY_STATUS,
+  });
+  const features = [...zone.features, ...airq.features];
+  // The selector must equal the (globally-unique) external_id, so features
+  // named the same (e.g. "Humidity" on the zone and the air-quality sensor)
+  // never collide on the global t_device_feature.selector constraint.
+  features.forEach((f) => assert.equal(f.selector, f.external_id));
+  const selectors = features.map((f) => f.selector);
+  assert.equal(new Set(selectors).size, selectors.length, 'selectors are unique');
+});
+
 test('convertAirQualitySensor converts an az_airqsensor', () => {
   const device = convertAirQualitySensor(gladys, {
     ...AIR_QUALITY_DEVICE,
