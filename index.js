@@ -14,6 +14,8 @@
 // The SDK reads them automatically: `new GladysIntegration()` is enough.
 // -----------------------------------------------------------------------------
 
+import { readFileSync } from 'node:fs';
+
 import { GladysIntegration, logger } from '@gladysassistant/integration-sdk';
 import { normalizeConfig } from './src/config.js';
 import { AirzoneCloudClient } from './src/airzone/client.js';
@@ -31,6 +33,13 @@ import { FEATURE_CODES } from './src/constants.js';
 
 const gladys = new GladysIntegration();
 const airzone = new AirzoneCloudClient();
+
+// Version of the integration, logged on startup: the logs of a user report must
+// say which version produced them. Read from package.json (shipped in the image)
+// rather than duplicated here, so it stays in sync with the released version.
+const { version: VERSION } = JSON.parse(
+  readFileSync(new URL('./package.json', import.meta.url), 'utf8'),
+);
 
 // Current configuration (hot-reloaded via onConfigUpdated).
 let config = normalizeConfig();
@@ -256,7 +265,7 @@ gladys.handleShutdown((signal) => {
 });
 
 // --- Startup -----------------------------------------------------------------
-logger.info('Starting the Airzone Cloud integration...');
+logger.info(`Starting the Airzone Cloud integration v${VERSION}...`);
 gladys.connect().catch((err) => {
   logger.error('Initial connection failed', err);
   process.exit(1);

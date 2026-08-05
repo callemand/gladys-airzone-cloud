@@ -162,6 +162,9 @@ test('the integration discovers, polls and controls Airzone zones', async (t) =>
       `initial discovery\n${output}`,
     );
 
+    // The startup line names the running version (asked for in every bug report).
+    assert.match(output, /Starting the Airzone Cloud integration v\d+\.\d+\.\d+\.\.\./);
+
     const login = airzone.requests.find((r) => r.path === '/auth/login');
     assert.ok(login, 'the integration logged in to Airzone');
     assert.equal(login.body.email, 'user@example.com');
