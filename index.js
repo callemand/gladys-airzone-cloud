@@ -133,7 +133,6 @@ async function publishDevices() {
   await publishDeviceTransports(devices);
   await warnAboutDevicesNotAddedInGladys(devices);
   await reportConnectionStatus(true);
-  return devices;
 }
 
 /**
@@ -279,35 +278,6 @@ gladys.onPoll(async (device) => {
     await reportDeviceTransport(device, err);
     throw err;
   }
-});
-
-// --- Manifest actions: buttons in the Configuration screen -------------------
-// Both actions are account-level (they do not belong to a single device type),
-// so they are registered here rather than on a device blueprint.
-gladys.onAction('test_connection', async () => {
-  logger.info('Action test_connection -> logging in to Airzone Cloud');
-  await connectToAirzone();
-  if (!airzone.isLoggedIn()) {
-    throw new Error('Fill in your Airzone Cloud email and password first');
-  }
-  const { zones, airQualitySensors } = await airzone.listDevices();
-  await reportConnectionStatus(true);
-  return {
-    en: `Airzone Cloud OK: ${zones.length} zone(s) and ${airQualitySensors.length} air-quality sensor(s) found.`,
-    fr: `Airzone Cloud OK : ${zones.length} zone(s) et ${airQualitySensors.length} capteur(s) de qualité d'air trouvés.`,
-  };
-});
-
-gladys.onAction('refresh_devices', async () => {
-  logger.info('Action refresh_devices -> reloading the Airzone Cloud devices');
-  if (!airzone.isLoggedIn() && !(await connectToAirzone())) {
-    throw new Error('Fill in your Airzone Cloud email and password first');
-  }
-  const devices = await publishDevices();
-  return {
-    en: `${devices.length} Airzone device(s) republished to Gladys.`,
-    fr: `${devices.length} appareil(s) Airzone republiés dans Gladys.`,
-  };
 });
 
 // --- Configuration updated by the user ---------------------------------------
