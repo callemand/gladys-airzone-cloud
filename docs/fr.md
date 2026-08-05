@@ -20,9 +20,10 @@ publié comme un device dédié exposant température, humidité, CO2, PM2.5, PM
 COV (TVOC), pression et un indice global de qualité d'air (tout en lecture
 seule, avec historique).
 
-L'état des zones est rafraîchi toutes les 10 secondes : un changement fait
-depuis le thermostat Airzone ou l'application Airzone Cloud apparaît dans Gladys
-peu après.
+L'état des zones est rafraîchi toutes les minutes : un changement fait depuis
+le thermostat Airzone ou l'application Airzone Cloud apparaît dans Gladys peu
+après. Cette fréquence est volontairement modérée, l'API Airzone Cloud limitant
+le nombre de requêtes par compte.
 
 ## Prérequis
 
@@ -40,11 +41,27 @@ peu après.
 2. Ouvrez son écran de **Configuration** et renseignez :
    - **E-mail Airzone Cloud** — l'adresse e-mail de votre compte Airzone Cloud ;
    - **Mot de passe Airzone Cloud** — le mot de passe de ce compte (stocké comme
-     secret, jamais réaffiché).
+     secret, jamais réaffiché) ;
+   - **Journaux détaillés** — à cocher uniquement pour diagnostiquer un
+     problème : chaque rafraîchissement est alors journalisé en détail dans
+     l'onglet Journaux. La bascule est immédiate, sans redémarrage.
 3. Enregistrez. L'intégration se connecte à Airzone Cloud et charge vos zones.
 4. Ouvrez l'écran **Découverte** : vos zones y sont listées. Ajoutez celles que
    vous voulez, puis placez-les dans vos pièces et tableaux de bord comme
    n'importe quel appareil Gladys.
+
+L'écran de Configuration affiche aussi l'état de la connexion à Airzone Cloud et
+deux boutons :
+
+- **Tester la connexion Airzone Cloud** — se connecte et compte les zones de
+  votre compte ;
+- **Rafraîchir les appareils Airzone** — recharge zones et capteurs et les
+  republie dans Gladys.
+
+Tous les appareils portent le badge **cloud** : cette intégration passe par le
+service Airzone Cloud, il n'y a pas de connexion locale. Le badge devient
+« dégradé » (point orange) pour une zone dont le dernier rafraîchissement a
+échoué, avec la raison en infobulle.
 
 Pour utiliser un autre compte Airzone Cloud plus tard, mettez simplement à jour
 l'e-mail et le mot de passe dans l'écran de Configuration : l'intégration se
@@ -60,12 +77,21 @@ reconnecte et rafraîchit la liste des zones automatiquement.
 - **Une zone n'apparaît pas dans la Découverte** — vérifiez qu'elle est visible
   dans l'application Airzone Cloud avec le même compte, puis relancez la
   découverte.
+- **Certaines zones ne remontent aucune température** — vérifiez d'abord que
+  ces zones ont bien été **ajoutées** depuis l'écran Découverte : une zone
+  seulement découverte n'est pas un appareil Gladys, et les états publiés pour
+  elle sont ignorés. Les journaux de l'intégration listent les zones découvertes
+  mais non ajoutées à chaque démarrage. Si la zone est bien ajoutée, ses
+  journaux indiqueront pourquoi le rafraîchissement échoue (erreur Airzone) ou
+  qu'Airzone ne fournit pas de température ambiante pour elle (zone sans
+  thermostat).
 - **Les commandes semblent ignorées** — Airzone peut mettre quelques secondes à
   transmettre une commande à l'unité ; l'état dans Gladys reflète l'état du
-  cloud et se met à jour au rafraîchissement suivant (10 secondes). Vérifiez
+  cloud et se met à jour au rafraîchissement suivant (une minute). Vérifiez
   aussi que l'installation est en ligne dans l'application Airzone Cloud
   (webserver connecté).
 - **Les états ne se mettent plus à jour** — la session Airzone a pu expirer ;
   l'intégration rafraîchit son jeton automatiquement. Si le problème persiste,
   consultez les journaux de l'intégration depuis sa page de configuration dans
-  Gladys.
+  Gladys (cochez d'abord **Journaux détaillés** pour avoir le détail de chaque
+  rafraîchissement).

@@ -10,6 +10,7 @@
   "docker_image": "ghcr.io/callemand/gladys-airzone-cloud:1.1.2",
   "gladys_version": ">=4.62.0",
   "cover_image": "https://raw.githubusercontent.com/callemand/gladys-airzone-cloud/main/cover.png",
+  "transports": ["cloud"],
   "config_schema": [
     {
       "key": "email",
@@ -44,6 +45,45 @@
         "fr": "••••••••"
       },
       "required": true
+    },
+    {
+      "key": "verbose_logs",
+      "type": "boolean",
+      "label": {
+        "en": "Verbose logs",
+        "fr": "Journaux détaillés"
+      },
+      "description": {
+        "en": "Log the details of every refresh (one line per device and per Airzone request) in the Logs tab. Useful to diagnose a device that reports nothing; leave it off the rest of the time.",
+        "fr": "Journalise le détail de chaque rafraîchissement (une ligne par appareil et par requête Airzone) dans l'onglet Journaux. Utile pour diagnostiquer un appareil qui ne remonte rien ; à laisser désactivé le reste du temps."
+      },
+      "default": false
+    }
+  ],
+  "actions": [
+    {
+      "key": "test_connection",
+      "label": {
+        "en": "Test the Airzone Cloud connection",
+        "fr": "Tester la connexion Airzone Cloud"
+      },
+      "description": {
+        "en": "Log in to Airzone Cloud and count the zones of your account.",
+        "fr": "Se connecte à Airzone Cloud et compte les zones de votre compte."
+      },
+      "timeout_seconds": 30
+    },
+    {
+      "key": "refresh_devices",
+      "label": {
+        "en": "Refresh the Airzone devices",
+        "fr": "Rafraîchir les appareils Airzone"
+      },
+      "description": {
+        "en": "Reload the zones and air-quality sensors of your account and republish them to Gladys.",
+        "fr": "Recharge les zones et capteurs de qualité d'air de votre compte et les republie dans Gladys."
+      },
+      "timeout_seconds": 60
     }
   ]
 }

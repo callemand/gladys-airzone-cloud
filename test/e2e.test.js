@@ -47,19 +47,25 @@ function startFakeAirzone() {
         path: url.pathname,
         body: body ? JSON.parse(body) : null,
       });
-      res.writeHead(200, { 'Content-Type': 'application/json' });
+      const respond = (status, json) => {
+        res.writeHead(status, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(json));
+      };
       if (url.pathname === '/auth/login') {
-        res.end(JSON.stringify({ token: 'access', refreshToken: 'refresh' }));
+        respond(200, { token: 'access', refreshToken: 'refresh' });
       } else if (url.pathname === '/installations') {
-        res.end(JSON.stringify(INSTALLATIONS_RESPONSE));
+        respond(200, INSTALLATIONS_RESPONSE);
       } else if (url.pathname === '/installations/install-1') {
-        res.end(JSON.stringify(INSTALLATION_DETAIL_RESPONSE));
+        respond(200, INSTALLATION_DETAIL_RESPONSE);
       } else if (url.pathname === '/devices/zone-1/status') {
-        res.end(JSON.stringify({ status: ZONE_STATUS }));
+        respond(200, { status: ZONE_STATUS });
       } else if (url.pathname === '/devices/airq-1/status') {
-        res.end(JSON.stringify({ status: AIR_QUALITY_STATUS }));
+        respond(200, { status: AIR_QUALITY_STATUS });
+      } else if (url.pathname.endsWith('/status')) {
+        // Unknown device: same answer as the real API.
+        respond(404, { message: 'Device not found' });
       } else {
-        res.end(JSON.stringify({}));
+        respond(200, {});
       }
     });
   });
@@ -73,6 +79,8 @@ function startFakeGladys() {
   const state = {
     discoveredDevicePosts: [],
     statePosts: [],
+    transportPosts: [],
+    connectionStatusPosts: [],
     commandResults: [],
     ws: null,
   };
@@ -96,6 +104,12 @@ function startFakeGladys() {
         respond({ success: true, count: parsed.devices.length });
       } else if (req.method === 'POST' && req.url === '/api/integration/v1/state') {
         state.statePosts.push(JSON.parse(body).states);
+        respond({ success: true });
+      } else if (req.method === 'POST' && req.url === '/api/integration/v1/device/transport') {
+        state.transportPosts.push(JSON.parse(body).transports);
+        respond({ success: true });
+      } else if (req.method === 'POST' && req.url === '/api/integration/v1/connection_status') {
+        state.connectionStatusPosts.push(JSON.parse(body));
         respond({ success: true });
       } else {
         res.writeHead(404);
@@ -138,7 +152,8 @@ test('the integration discovers, polls and controls Airzone zones', async (t) =>
       GLADYS_INTEGRATION_TOKEN: TOKEN,
       GLADYS_INTEGRATION_SELECTOR: SELECTOR,
       AIRZONE_ENDPOINT: `http://127.0.0.1:${airzone.port}`,
-      LOG_LEVEL: 'debug',
+      // No LOG_LEVEL: same as the container started by Gladys, which only
+      // injects the GLADYS_* variables (the SDK then logs at `info`).
     },
   });
   child.stdout.on('data', (d) => {
@@ -161,6 +176,9 @@ test('the integration discovers, polls and controls Airzone zones', async (t) =>
       () => gladys.state.discoveredDevicePosts.length >= 1,
       `initial discovery\n${output}`,
     );
+
+    // The startup line names the running version (asked for in every bug report).
+    assert.match(output, /Starting the Airzone Cloud integration v\d+\.\d+\.\d+\.\.\./);
 
     const login = airzone.requests.find((r) => r.path === '/auth/login');
     assert.ok(login, 'the integration logged in to Airzone');
@@ -188,6 +206,15 @@ test('the integration discovers, polls and controls Airzone zones', async (t) =>
       ],
     );
 
+    // The fake Gladys host has no device created yet: the integration must say
+    // so, a device absent from Gladys silently drops the states we publish.
+    await waitUntil(
+      () => /are not added in Gladys yet/.test(output),
+      `missing devices warning\n${output}`,
+    );
+    assert.match(output, /2\/2 Airzone device\(s\) are not added in Gladys yet/);
+    assert.match(output, /Living room, Air quality/);
+
     const airq = devices.find((d) => d.external_id === `ext:${SELECTOR}:airq:airq-1`);
     assert.ok(airq, 'the air-quality sensor was published');
     assert.equal(airq.name, 'Air quality');
@@ -195,6 +222,20 @@ test('the integration discovers, polls and controls Airzone zones', async (t) =>
       airq.features.map((f) => f.external_id.split(':').pop()),
       ['temperature', 'humidity', 'co2', 'pm25', 'pm10', 'tvoc', 'pressure', 'air-quality-index'],
     );
+  });
+
+  await t.test('on connection: reports the transports and the connection status', async () => {
+    await waitUntil(
+      () => gladys.state.connectionStatusPosts.length >= 1,
+      `connection status\n${output}`,
+    );
+    // Airzone is a cloud-only integration: every device reports the cloud
+    // channel, nominal (no degraded flag).
+    assert.deepEqual(gladys.state.transportPosts.at(-1), [
+      { device_external_id: `ext:${SELECTOR}:zone:zone-1`, transport: 'cloud' },
+      { device_external_id: `ext:${SELECTOR}:airq:airq-1`, transport: 'cloud' },
+    ]);
+    assert.deepEqual(gladys.state.connectionStatusPosts.at(-1), { connected: true });
   });
 
   await t.test('a scan request republishes the devices', async () => {
@@ -280,5 +321,70 @@ test('the integration discovers, polls and controls Airzone zones', async (t) =>
     const ack = gladys.state.commandResults.find((r) => r.message_id === 'set-2');
     assert.equal(ack.success, false);
     assert.match(ack.error, /not controllable/);
+  });
+
+  await t.test('the manifest actions answer with a multi-language message', async () => {
+    send('external-integration.action.run', { message_id: 'action-1', key: 'test_connection' });
+    await waitUntil(
+      () => gladys.state.commandResults.some((r) => r.message_id === 'action-1'),
+      `test_connection ack\n${output}`,
+    );
+    const test = gladys.state.commandResults.find((r) => r.message_id === 'action-1');
+    assert.equal(test.success, true, test.error);
+    assert.match(test.data.message.en, /Airzone Cloud OK: 1 zone\(s\) and 1 air-quality sensor/);
+    assert.match(test.data.message.fr, /1 zone\(s\) et 1 capteur/);
+
+    const publishedBefore = gladys.state.discoveredDevicePosts.length;
+    send('external-integration.action.run', { message_id: 'action-2', key: 'refresh_devices' });
+    await waitUntil(
+      () => gladys.state.commandResults.some((r) => r.message_id === 'action-2'),
+      `refresh_devices ack\n${output}`,
+    );
+    const refresh = gladys.state.commandResults.find((r) => r.message_id === 'action-2');
+    assert.equal(refresh.success, true, refresh.error);
+    assert.match(refresh.data.message.en, /2 Airzone device\(s\) republished/);
+    assert.ok(
+      gladys.state.discoveredDevicePosts.length > publishedBefore,
+      'the action republished the devices',
+    );
+  });
+
+  await t.test('the verbose logs option switches the log level at runtime', async () => {
+    // Gladys does not inject LOG_LEVEL: without the option, debug lines stay out
+    // of the Logs tab.
+    assert.doesNotMatch(output, /\[DEBUG\]/);
+
+    send('external-integration.config-updated', {
+      config: { email: 'user@example.com', password: 'secret', verbose_logs: true },
+    });
+    await waitUntil(() => /\[DEBUG\]/.test(output), `debug logs\n${output}`);
+    assert.match(output, /Verbose logs enabled/);
+  });
+
+  await t.test('a failing poll flags the device transport as degraded', async () => {
+    const unknownDevice = {
+      external_id: `ext:${SELECTOR}:zone:unknown-zone`,
+      selector: `ext-${SELECTOR}-zone-unknown-zone`,
+      params: [{ name: 'installationId', value: 'install-1' }],
+    };
+    // The fake Airzone API answers 404 for an unknown device.
+    send('external-integration.device.poll', { message_id: 'poll-2', device: unknownDevice });
+    await waitUntil(
+      () => gladys.state.commandResults.some((r) => r.message_id === 'poll-2'),
+      `failing poll ack\n${output}`,
+    );
+    const ack = gladys.state.commandResults.find((r) => r.message_id === 'poll-2');
+    assert.equal(ack.success, false);
+
+    await waitUntil(
+      () => (gladys.state.transportPosts.at(-1) || []).some((entry) => entry.degraded),
+      `degraded transport\n${output}`,
+    );
+    const [entry] = gladys.state.transportPosts.at(-1);
+    assert.equal(entry.device_external_id, unknownDevice.external_id);
+    assert.equal(entry.transport, 'cloud');
+    assert.equal(entry.degraded, true);
+    assert.match(entry.message.en, /Airzone Cloud refused the last refresh/);
+    assert.match(output, /onPoll .*unknown-zone failed/);
   });
 });

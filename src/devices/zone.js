@@ -1,19 +1,23 @@
 // -----------------------------------------------------------------------------
-// Airzone zone (az_zone).
+// Device type: AIRZONE ZONE (az_zone).
 //
-// Exposes four features:
+// Exposes five features:
 //   - power            (air-conditioning / binary)
-//   - mode             (air-conditioning / mode)
+//   - mode             (air-conditioning / mode, master zone only)
 //   - temperature      (air-conditioning / target-temperature)
 //   - room-temperature (temperature-sensor / decimal, read-only)
+//   - humidity         (humidity-sensor / decimal, read-only)
 // -----------------------------------------------------------------------------
 
 import {
+  createLogger,
   DEVICE_FEATURE_CATEGORIES,
   DEVICE_FEATURE_TYPES,
   DEVICE_FEATURE_UNITS,
+  DEVICE_TRANSPORTS,
 } from '@gladysassistant/integration-sdk';
 
+import { airzone } from '../airzone/client.js';
 import {
   AC_MODE,
   AIRZONE_MODE,
@@ -23,8 +27,14 @@ import {
   FEATURE_CODES,
   HUMIDITY_BOUNDS,
   MODE_TEMPERATURE_FIELDS,
+  POLL_FREQUENCY,
   ROOM_TEMPERATURE_BOUNDS,
 } from '../constants.js';
+import { buildDeviceParams, externalIds, withFeatureSelectors } from './common.js';
+
+export const ZONE_SLUG = 'zone';
+
+const logger = createLogger({ name: ZONE_SLUG });
 
 // Airzone operation mode <-> Gladys AC_MODE (STOP is power off, not a mode).
 const MODES_AIRZONE_TO_GLADYS = {
@@ -246,6 +256,36 @@ export function buildPollStates(ids, status) {
   return states.filter((state) => state.state !== null && state.state !== undefined);
 }
 
+// Zones already reported as publishing no temperature (a poll runs every
+// minute: warn once, and again only if it starts working then stops).
+const temperatureWarnings = new Set();
+
+/**
+ * Warn when a poll publishes no room temperature: either Airzone does not
+ * deliver `local_temp` for this zone (no thermostat), or it names the field
+ * differently — the status field names make it possible to tell.
+ * @param {object} device the Gladys device being polled
+ * @param {object} status the Airzone zone status
+ * @param {Array} states the states about to be published
+ */
+function warnAboutMissingRoomTemperature(device, status, states) {
+  const hasRoomTemperature = states.some(({ device_feature_external_id: id }) =>
+    id.endsWith(`:${FEATURE_CODES.ROOM_TEMPERATURE}`),
+  );
+  if (hasRoomTemperature) {
+    temperatureWarnings.delete(device.external_id);
+    return;
+  }
+  if (temperatureWarnings.has(device.external_id)) {
+    return;
+  }
+  temperatureWarnings.add(device.external_id);
+  logger.warn(
+    `The zone "${device.selector || device.external_id}" reports no room temperature ` +
+      `(no usable "local_temp"). Status fields: ${Object.keys(status || {}).join(', ')}`,
+  );
+}
+
 /**
  * Build the change to send to Airzone for a Gladys command. Returns null when
  * the feature is not controllable.
@@ -268,3 +308,65 @@ export function buildSetZoneChange(featureCode, value) {
       return null;
   }
 }
+
+// --- Device type registry entry ----------------------------------------------
+
+export const zoneDevice = {
+  slug: ZONE_SLUG,
+
+  /**
+   * Build the Gladys discovery payload of one Airzone zone.
+   * @param {import('@gladysassistant/integration-sdk').GladysIntegration} gladys
+   * @param {object} entry Airzone zone entry (installationId + status)
+   * @returns {object} Gladys discovered device
+   */
+  buildDevice(gladys, entry) {
+    const ids = externalIds(gladys, ZONE_SLUG, entry.device_id);
+    return {
+      name: entry.name || String(entry.device_id),
+      external_id: ids.device,
+      // The Airzone Cloud API does not expose an AC model name; the connected
+      // webserver firmware type is the closest hardware descriptor available.
+      model: entry.ws_type || null,
+      poll_frequency: POLL_FREQUENCY,
+      should_poll: true,
+      features: withFeatureSelectors(buildZoneFeatures(ids, entry)),
+      params: buildDeviceParams(entry),
+    };
+  },
+
+  /**
+   * Refresh one zone: read its Airzone status and publish its states.
+   * @param {import('@gladysassistant/integration-sdk').GladysIntegration} gladys
+   * @param {object} context `{ device, deviceId, installationId }`
+   */
+  async onPoll(gladys, { device, deviceId, installationId }) {
+    const status = await airzone.getZoneStatus(deviceId, installationId);
+    const states = buildPollStates(externalIds(gladys, ZONE_SLUG, deviceId), status);
+    warnAboutMissingRoomTemperature(device, status, states);
+    logger.debug(`Polled ${device.external_id} -> ${states.length} states`);
+    if (states.length > 0) {
+      await gladys.publishStates(states);
+    }
+  },
+
+  /**
+   * Run a user command on a zone feature.
+   * @param {import('@gladysassistant/integration-sdk').GladysIntegration} gladys
+   * @param {object} context `{ deviceId, installationId, feature, value }`
+   */
+  async onSetValue(gladys, { deviceId, installationId, feature, value }) {
+    const featureCode = feature.external_id.split(':').pop();
+    const change = buildSetZoneChange(featureCode, value);
+    if (!change) {
+      throw new Error(`Airzone feature "${feature.external_id}" is not controllable`);
+    }
+    await airzone.setZoneParam(deviceId, installationId, change);
+  },
+
+  // A zone is always reached through the Airzone Cloud service: there is no
+  // local channel in this integration (the manifest declares `cloud` only).
+  transport() {
+    return DEVICE_TRANSPORTS.CLOUD;
+  },
+};
