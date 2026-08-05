@@ -30,6 +30,13 @@ const logger = createLogger({ name: 'airzone' });
 // command time out on the Gladys side.
 const REQUEST_TIMEOUT_MS = 4000;
 
+// The login is the slowest call of the API (the account password is verified
+// server-side) and it does NOT answer a Gladys command: it gets a much larger
+// budget, and a timeout is retried — losing it means losing the session, and
+// every later request fails with "Airzone Cloud is not connected".
+const LOGIN_TIMEOUT_MS = 20000;
+const LOGIN_MAX_ATTEMPTS = 2;
+
 // Maximum number of Airzone requests in flight. The reference Airzone Cloud
 // client (aioairzone-cloud) caps itself at 4; we stay below it, because nothing
 // here is time-critical: only the discovery walks several devices at once (a
@@ -40,7 +47,7 @@ const MAX_CONCURRENT_REQUESTS = 2;
 // backoff during which the whole account stops sending requests. The delays are
 // kept small on purpose: a poll that answers too late is useless to Gladys.
 const RETRYABLE_STATUS_CODES = new Set([429, 500, 502, 503, 504]);
-const MAX_ATTEMPTS = 3;
+const DEFAULT_MAX_ATTEMPTS = 3;
 const RETRY_DELAYS_MS = [400, 1200];
 const MAX_RETRY_DELAY_MS = 2000;
 
@@ -50,6 +57,15 @@ const MAX_ERROR_BODY_LENGTH = 200;
 // The Airzone device types exposed to Gladys (systems are only containers of
 // zones in the installation tree).
 const EXPOSED_DEVICE_TYPES = new Set([AIRZONE_DEVICE_TYPES.ZONE, AIRZONE_DEVICE_TYPES.AIR_QUALITY]);
+
+/**
+ * Whether an error is the abort of a request that took too long.
+ * @param {Error} error the error thrown by fetch
+ * @returns {boolean}
+ */
+function isTimeout(error) {
+  return error.name === 'TimeoutError' || error.name === 'AbortError';
+}
 
 /**
  * Read the `Retry-After` header (delay in seconds or HTTP date).
@@ -70,7 +86,13 @@ function parseRetryAfter(headers) {
 }
 
 export class AirzoneCloudClient {
-  constructor(baseUrl = AIRZONE_ENDPOINT) {
+  /**
+   * @param {string} [baseUrl] Airzone Cloud API base URL
+   * @param {object} [options] options
+   * @param {number} [options.loginTimeoutMs] login timeout (lowered by the tests)
+   */
+  constructor(baseUrl = AIRZONE_ENDPOINT, { loginTimeoutMs = LOGIN_TIMEOUT_MS } = {}) {
+    this.loginTimeoutMs = loginTimeoutMs;
     this.baseUrl = baseUrl.replace(/\/+$/, '');
     this.accessToken = null;
     this.refreshToken = null;
@@ -96,6 +118,9 @@ export class AirzoneCloudClient {
       method: 'POST',
       body: JSON.stringify({ email, password }),
       contentType: 'application/json',
+      timeoutMs: this.loginTimeoutMs,
+      maxAttempts: LOGIN_MAX_ATTEMPTS,
+      retryOnTimeout: true,
     });
     this.#storeTokens(response);
     logger.info('Logged in');
@@ -251,7 +276,7 @@ export class AirzoneCloudClient {
       try {
         return await this.scheduler.run(() => this.#fetchJson(path, options));
       } catch (e) {
-        const delay = this.#retryDelay(e, attempt);
+        const delay = this.#retryDelay(e, attempt, options);
         if (delay === null) {
           throw e;
         }
@@ -270,15 +295,20 @@ export class AirzoneCloudClient {
    * @param {number} attempt zero-based index of the attempt that just failed
    * @returns {number|null} the delay in milliseconds, or null to not retry
    */
-  #retryDelay(error, attempt) {
-    if (attempt >= MAX_ATTEMPTS - 1 || !RETRYABLE_STATUS_CODES.has(error.status)) {
+  #retryDelay(error, attempt, { maxAttempts = DEFAULT_MAX_ATTEMPTS, retryOnTimeout = false } = {}) {
+    const retryable =
+      RETRYABLE_STATUS_CODES.has(error.status) || (retryOnTimeout && isTimeout(error));
+    if (attempt >= maxAttempts - 1 || !retryable) {
       return null;
     }
     const backoff = RETRY_DELAYS_MS[attempt] ?? RETRY_DELAYS_MS.at(-1);
     return Math.min(error.retryAfterMs ?? backoff, MAX_RETRY_DELAY_MS);
   }
 
-  async #fetchJson(path, { method = 'GET', headers = {}, body, contentType }) {
+  async #fetchJson(
+    path,
+    { method = 'GET', headers = {}, body, contentType, timeoutMs = REQUEST_TIMEOUT_MS },
+  ) {
     const response = await fetch(`${this.baseUrl}/${path}`, {
       method,
       headers: {
@@ -287,7 +317,7 @@ export class AirzoneCloudClient {
         ...headers,
       },
       body,
-      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+      signal: AbortSignal.timeout(timeoutMs),
     });
     // Some write endpoints answer with an empty body.
     const text = await response.text();
