@@ -43,7 +43,9 @@ template with the JavaScript SDK
   | Pressure          | `pressure-sensor` / decimal    | Airzone `aq_pressure` (hPa)  |
   | Air quality index | `airquality-sensor` / aqi      | Airzone `aq_score` (0-100)   |
 
-- Zones are **polled every 10 seconds** and the states are pushed back to Gladys.
+- Zones are **polled every minute** and the states are pushed back to Gladys.
+- Requests go through a scheduler capping the parallelism, and a rate-limited
+  request (HTTP 429) is retried with a backoff applied to the whole account.
 - User commands are written back with `PATCH /devices/{id}` (`{ param, value, installation_id }`).
 - The Airzone `installationId` is stored as a device param: Gladys sends the
   params back with every poll / set-value command, and the status / command
@@ -57,10 +59,12 @@ template with the JavaScript SDK
 .
 ├─ index.js                          # SDK bootstrap + event wiring
 ├─ src/
-│  ├─ airzone/client.js              # Airzone Cloud API client (fetch)
-│  ├─ devices/convertDevice.js       # Airzone device -> Gladys discovery payload
-│  ├─ devices/zone.js                # zone features + value mappings
-│  ├─ devices/airQualitySensor.js    # air-quality sensor features + states
+│  ├─ airzone/client.js              # Airzone Cloud API client (fetch) + session
+│  ├─ airzone/scheduler.js           # request parallelism cap + global backoff
+│  ├─ devices/index.js               # device type registry + command dispatch
+│  ├─ devices/common.js              # external ids, feature selectors, params
+│  ├─ devices/zone.js                # zone device type (features, poll, commands)
+│  ├─ devices/airQualitySensor.js    # air-quality sensor device type
 │  ├─ constants.js                   # Airzone constants (+ AC modes, poll frequency)
 │  └─ config.js                      # config defaults + normalization
 ├─ test/                             # node:test unit + end-to-end tests

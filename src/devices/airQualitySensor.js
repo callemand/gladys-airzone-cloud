@@ -1,5 +1,5 @@
 // -----------------------------------------------------------------------------
-// Airzone air-quality sensor (az_airqsensor).
+// Device type: AIRZONE AIR-QUALITY SENSOR (az_airqsensor).
 //
 // A standalone device (separate from the zones) that measures the indoor air
 // quality: temperature, humidity, CO2, particulate matter (PM2.5 / PM10),
@@ -8,21 +8,30 @@
 // -----------------------------------------------------------------------------
 
 import {
+  createLogger,
   DEVICE_FEATURE_CATEGORIES,
   DEVICE_FEATURE_TYPES,
   DEVICE_FEATURE_UNITS,
+  DEVICE_TRANSPORTS,
 } from '@gladysassistant/integration-sdk';
 
+import { airzone } from '../airzone/client.js';
 import {
   AIR_QUALITY_INDEX_BOUNDS,
   CO2_BOUNDS,
   FEATURE_CODES,
   HUMIDITY_BOUNDS,
   PM_BOUNDS,
+  POLL_FREQUENCY,
   PRESSURE_BOUNDS,
   ROOM_TEMPERATURE_BOUNDS,
   TVOC_BOUNDS,
 } from '../constants.js';
+import { buildDeviceParams, externalIds, withFeatureSelectors } from './common.js';
+
+export const AIR_QUALITY_SLUG = 'airq';
+
+const logger = createLogger({ name: AIR_QUALITY_SLUG });
 
 const { SENSOR } = DEVICE_FEATURE_TYPES;
 
@@ -165,3 +174,50 @@ export function buildAirQualityPollStates(ids, status) {
     state: readSensor(status, sensor),
   })).filter((state) => state.state !== null);
 }
+
+// --- Device type registry entry ----------------------------------------------
+
+export const airQualityDevice = {
+  slug: AIR_QUALITY_SLUG,
+
+  /**
+   * Build the Gladys discovery payload of one air-quality sensor.
+   * @param {import('@gladysassistant/integration-sdk').GladysIntegration} gladys
+   * @param {object} entry Airzone sensor entry (installationId + status)
+   * @returns {object} Gladys discovered device
+   */
+  buildDevice(gladys, entry) {
+    const ids = externalIds(gladys, AIR_QUALITY_SLUG, entry.device_id);
+    return {
+      name: entry.name || 'Air quality',
+      external_id: ids.device,
+      model: entry.ws_type || null,
+      poll_frequency: POLL_FREQUENCY,
+      should_poll: true,
+      features: withFeatureSelectors(buildAirQualityFeatures(ids)),
+      params: buildDeviceParams(entry),
+    };
+  },
+
+  /**
+   * Refresh one air-quality sensor: read its status and publish its states.
+   * @param {import('@gladysassistant/integration-sdk').GladysIntegration} gladys
+   * @param {object} context `{ device, deviceId, installationId }`
+   */
+  async onPoll(gladys, { device, deviceId, installationId }) {
+    const status = await airzone.getZoneStatus(deviceId, installationId);
+    const states = buildAirQualityPollStates(
+      externalIds(gladys, AIR_QUALITY_SLUG, deviceId),
+      status,
+    );
+    logger.debug(`Polled ${device.external_id} -> ${states.length} states`);
+    if (states.length > 0) {
+      await gladys.publishStates(states);
+    }
+  },
+
+  // Read-only sensor: no onSetValue. Always reached through the cloud service.
+  transport() {
+    return DEVICE_TRANSPORTS.CLOUD;
+  },
+};

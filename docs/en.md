@@ -42,6 +42,19 @@ of requests per account.
 4. Open the **Discovery** screen: your zones are listed there. Add the ones you
    want, then place them in your rooms and dashboards like any Gladys device.
 
+The Configuration screen also shows the Airzone Cloud connection status and two
+buttons:
+
+- **Test the Airzone Cloud connection** — logs in and counts the zones of your
+  account;
+- **Refresh the Airzone devices** — reloads the zones and sensors and
+  republishes them to Gladys.
+
+Every device carries the **cloud** badge: this integration goes through the
+Airzone Cloud service, there is no local connection. The badge turns degraded
+(orange dot) for a zone whose last refresh failed, with the reason in the
+tooltip.
+
 To use another Airzone Cloud account later, just update the email and password
 in the Configuration screen: the integration reconnects and refreshes the zone
 list automatically.

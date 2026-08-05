@@ -47,6 +47,19 @@ le nombre de requêtes par compte.
    vous voulez, puis placez-les dans vos pièces et tableaux de bord comme
    n'importe quel appareil Gladys.
 
+L'écran de Configuration affiche aussi l'état de la connexion à Airzone Cloud et
+deux boutons :
+
+- **Tester la connexion Airzone Cloud** — se connecte et compte les zones de
+  votre compte ;
+- **Rafraîchir les appareils Airzone** — recharge zones et capteurs et les
+  republie dans Gladys.
+
+Tous les appareils portent le badge **cloud** : cette intégration passe par le
+service Airzone Cloud, il n'y a pas de connexion locale. Le badge devient
+« dégradé » (point orange) pour une zone dont le dernier rafraîchissement a
+échoué, avec la raison en infobulle.
+
 Pour utiliser un autre compte Airzone Cloud plus tard, mettez simplement à jour
 l'e-mail et le mot de passe dans l'écran de Configuration : l'intégration se
 reconnecte et rafraîchit la liste des zones automatiquement.

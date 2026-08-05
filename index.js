@@ -1,11 +1,13 @@
 // -----------------------------------------------------------------------------
 // Entry point of the Gladys Airzone Cloud external integration.
 //
-//   - logs in to Airzone Cloud with the credentials from the integration config;
-//   - publishes the account zones as discovered devices (each zone exposes
-//     power / mode / target-temperature / room-temperature features);
-//   - answers the polls of Gladys with the current zone state;
-//   - forwards user commands to Airzone Cloud (PATCH devices/{id}).
+// Role of this file: wire the SDK to the device catalog (src/devices/). It holds
+// NO Airzone logic: the API client lives in src/airzone/ and the device work in
+// the device modules. This file only:
+//   1. instantiates the SDK (connection, auth, reconnection: handled for you);
+//   2. registers the event handlers BEFORE connect();
+//   3. logs in to Airzone Cloud, publishes the discovered devices and reports
+//      the application-level connection status.
 //
 // Environment variables provided by the Gladys supervisor to the container:
 //   - GLADYS_HOST_API_URL         (host API URL)
@@ -16,23 +18,17 @@
 
 import { readFileSync } from 'node:fs';
 
-import { GladysIntegration, logger } from '@gladysassistant/integration-sdk';
+import { DEVICE_TRANSPORTS, GladysIntegration, logger } from '@gladysassistant/integration-sdk';
+import { airzone } from './src/airzone/client.js';
 import { normalizeConfig } from './src/config.js';
-import { AirzoneCloudClient } from './src/airzone/client.js';
 import {
-  AIR_QUALITY_SLUG,
-  airQualityExternalIds,
-  convertAirQualitySensor,
-  convertDevice,
-  getInstallationId,
-  zoneExternalIds,
-} from './src/devices/convertDevice.js';
-import { buildPollStates, buildSetZoneChange } from './src/devices/zone.js';
-import { buildAirQualityPollStates } from './src/devices/airQualitySensor.js';
-import { FEATURE_CODES } from './src/constants.js';
+  buildDiscoveredDevices,
+  buildTransportEntries,
+  findTypeByDevice,
+} from './src/devices/index.js';
+import { getInstallationId } from './src/devices/common.js';
 
 const gladys = new GladysIntegration();
-const airzone = new AirzoneCloudClient();
 
 // Version of the integration, logged on startup: the logs of a user report must
 // say which version produced them. Read from package.json (shipped in the image)
@@ -44,30 +40,29 @@ const { version: VERSION } = JSON.parse(
 // Current configuration (hot-reloaded via onConfigUpdated).
 let config = normalizeConfig();
 
+// Devices whose last refresh failed: their transport badge carries a degraded
+// flag until the next successful poll (published on transitions only).
+const degradedDevices = new Set();
+
 /**
- * Split a device external id (`ext:<selector>:<slug>:<deviceId>`, built with
- * gladys.externalIds()) into its type slug and Airzone device id.
- * @returns {{ slug: string, deviceId: string }}
+ * Report the application-level connection status, shown in the Configuration
+ * screen. Distinct from the container state machine: the integration can be
+ * RUNNING and still unable to reach Airzone Cloud.
+ * @param {boolean} connected whether Airzone Cloud is reachable
+ * @param {object} [message] multi-language message (`en` mandatory)
  */
-function parseExternalId(externalId) {
-  const prefix = gladys.externalId('');
-  if (!externalId || !externalId.startsWith(prefix)) {
-    throw new Error(
-      `Airzone device external_id is invalid: "${externalId}" should start with "${prefix}"`,
-    );
+async function reportConnectionStatus(connected, message) {
+  try {
+    await gladys.setConnectionStatus(connected, message);
+  } catch (err) {
+    logger.warn(`Could not report the connection status to Gladys: ${err.message}`);
   }
-  const parts = externalId.slice(prefix.length).split(':');
-  if (parts.length !== 2 || !parts[0] || !parts[1]) {
-    throw new Error(
-      `Airzone device external_id is invalid: "${externalId}" should be "${prefix}<slug>:<deviceId>"`,
-    );
-  }
-  return { slug: parts[0], deviceId: parts[1] };
 }
 
 /**
  * Log in to Airzone Cloud with the current config. Returns false (without
  * throwing) when the credentials are not filled in yet.
+ * @returns {Promise<boolean>} whether the integration is logged in
  */
 async function connectToAirzone() {
   if (!config.email || !config.password) {
@@ -75,6 +70,10 @@ async function connectToAirzone() {
     logger.warn(
       'Airzone Cloud is not configured yet: fill in the email and password in the integration settings',
     );
+    await reportConnectionStatus(false, {
+      en: 'Not configured yet: fill in your Airzone Cloud email and password.',
+      fr: 'Pas encore configurée : renseignez vos e-mail et mot de passe Airzone Cloud.',
+    });
     return false;
   }
   await airzone.login(config.email, config.password);
@@ -88,7 +87,8 @@ async function connectToAirzone() {
  * status, so publishing it would expose an incomplete device.
  */
 async function publishDevices() {
-  const { zones, airQualitySensors } = await airzone.listDevices();
+  const inventory = await airzone.listDevices();
+  const { zones, airQualitySensors } = inventory;
   const unavailable = [...zones, ...airQualitySensors].filter(({ status }) => !status);
   if (unavailable.length > 0) {
     logger.warn(
@@ -100,14 +100,61 @@ async function publishDevices() {
     `${zones.length} Airzone Cloud zones and ${airQualitySensors.length} air-quality sensors found`,
   );
 
-  const devices = [
-    ...zones.filter(({ status }) => status).map((zone) => convertDevice(gladys, zone)),
-    ...airQualitySensors
-      .filter(({ status }) => status)
-      .map((sensor) => convertAirQualitySensor(gladys, sensor)),
-  ];
+  const devices = buildDiscoveredDevices(gladys, {
+    zones: zones.filter(({ status }) => status),
+    airQualitySensors: airQualitySensors.filter(({ status }) => status),
+  });
   await gladys.publishDiscoveredDevices(devices);
+  await publishDeviceTransports(devices);
   await warnAboutDevicesNotAddedInGladys(devices);
+  await reportConnectionStatus(true);
+  return devices;
+}
+
+/**
+ * Publish the effective transport of every device ('cloud' here: everything
+ * goes through the Airzone Cloud service), rendered as a badge in the Gladys UI.
+ * @param {Array} devices the discovered devices published to Gladys
+ */
+async function publishDeviceTransports(devices) {
+  const entries = buildTransportEntries(gladys, devices);
+  if (entries.length === 0) {
+    return;
+  }
+  // A device that had failed is nominal again as soon as it is republished.
+  entries.forEach(({ external_id: externalId }) => degradedDevices.delete(externalId));
+  await gladys.publishTransports(entries);
+}
+
+/**
+ * Flag (or clear) the degraded state of one device's transport badge, so a zone
+ * that stopped answering is visible in the UI and not only in the logs. Only
+ * transitions are published: a poll runs every minute.
+ * @param {object} device the Gladys device
+ * @param {Error} [error] the error that made the refresh fail
+ */
+async function reportDeviceTransport(device, error) {
+  const externalId = device.external_id;
+  const isDegraded = degradedDevices.has(externalId);
+  if (Boolean(error) === isDegraded) {
+    return;
+  }
+  const entry = { external_id: externalId, transport: DEVICE_TRANSPORTS.CLOUD };
+  if (error) {
+    degradedDevices.add(externalId);
+    entry.degraded = true;
+    entry.message = {
+      en: `Airzone Cloud refused the last refresh: ${error.message}`.slice(0, 200),
+      fr: `Airzone Cloud a refusé le dernier rafraîchissement : ${error.message}`.slice(0, 200),
+    };
+  } else {
+    degradedDevices.delete(externalId);
+  }
+  try {
+    await gladys.publishTransports([entry]);
+  } catch (err) {
+    logger.warn(`Could not publish the transport of ${externalId}: ${err.message}`);
+  }
 }
 
 /**
@@ -147,16 +194,18 @@ gladys.onScanRequest(async () => {
 gladys.onSetValue(async (device, feature, value) => {
   logger.info(`onSetValue <- ${feature.external_id} = ${value}`);
   try {
-    const { deviceId } = parseExternalId(device.external_id);
-    const installationId = getInstallationId(device);
-    const featureCode = feature.external_id.split(':').pop();
-
-    const change = buildSetZoneChange(featureCode, value);
-    if (!change) {
-      throw new Error(`Airzone feature "${feature.external_id}" is not controllable`);
+    const { type, deviceId } = findTypeByDevice(gladys, device);
+    if (!type || typeof type.onSetValue !== 'function') {
+      // Throw: the SDK sends a success:false acknowledgement to Gladys.
+      throw new Error(`No command handler for ${device.external_id}`);
     }
-
-    await airzone.setZoneParam(deviceId, installationId, change);
+    await type.onSetValue(gladys, {
+      device,
+      deviceId,
+      installationId: getInstallationId(device),
+      feature,
+      value,
+    });
   } catch (err) {
     // The SDK only acks the command as failed: without this, the reason of a
     // failed command never reaches the integration logs.
@@ -166,64 +215,55 @@ gladys.onSetValue(async (device, feature, value) => {
 });
 
 // --- Polling: Gladys asks to refresh a device --------------------------------
-
-// Devices already reported as publishing no temperature (warn once per device,
-// a poll runs every minute).
-const temperatureWarnings = new Set();
-
-/**
- * Warn when a zone poll publishes no room temperature: either Airzone does not
- * deliver `local_temp` for this zone (no thermostat), or it names the field
- * differently — the status field names make it possible to tell.
- * @param {object} device the Gladys device being polled
- * @param {object} status the Airzone zone status
- * @param {Array} states the states about to be published
- */
-function warnAboutMissingRoomTemperature(device, status, states) {
-  const { deviceId } = parseExternalId(device.external_id);
-  const roomTemperatureId = zoneExternalIds(gladys, deviceId).feature(
-    FEATURE_CODES.ROOM_TEMPERATURE,
-  );
-  const hasRoomTemperature = states.some(
-    ({ device_feature_external_id: id }) => id === roomTemperatureId,
-  );
-  if (hasRoomTemperature) {
-    temperatureWarnings.delete(device.external_id);
-    return;
-  }
-  if (temperatureWarnings.has(device.external_id)) {
-    return;
-  }
-  temperatureWarnings.add(device.external_id);
-  logger.warn(
-    `The Airzone zone "${device.selector || device.external_id}" reports no room temperature ` +
-      `(no usable "local_temp"). Status fields: ${Object.keys(status || {}).join(', ')}`,
-  );
-}
-
 gladys.onPoll(async (device) => {
+  const { type, deviceId } = findTypeByDevice(gladys, device);
+  if (!type || typeof type.onPoll !== 'function') {
+    logger.debug(`onPoll ignored (no polling) for ${device.external_id}`);
+    return;
+  }
   try {
-    const { slug, deviceId } = parseExternalId(device.external_id);
-    const installationId = getInstallationId(device);
-
-    const status = await airzone.getZoneStatus(deviceId, installationId);
-    const isAirQuality = slug === AIR_QUALITY_SLUG;
-    const states = isAirQuality
-      ? buildAirQualityPollStates(airQualityExternalIds(gladys, deviceId), status)
-      : buildPollStates(zoneExternalIds(gladys, deviceId), status);
-    if (!isAirQuality) {
-      warnAboutMissingRoomTemperature(device, status, states);
-    }
-    logger.debug(`onPoll ${device.external_id} -> ${states.length} states`);
-    if (states.length > 0) {
-      await gladys.publishStates(states);
-    }
+    await type.onPoll(gladys, {
+      device,
+      deviceId,
+      installationId: getInstallationId(device),
+    });
+    await reportDeviceTransport(device);
   } catch (err) {
     // Same as onSetValue: a failed poll is otherwise invisible in the logs of
     // the integration, and only shows up as a device that stopped reporting.
     logger.error(`onPoll ${device.external_id} failed: ${err.message}`);
+    await reportDeviceTransport(device, err);
     throw err;
   }
+});
+
+// --- Manifest actions: buttons in the Configuration screen -------------------
+// Both actions are account-level (they do not belong to a single device type),
+// so they are registered here rather than on a device blueprint.
+gladys.onAction('test_connection', async () => {
+  logger.info('Action test_connection -> logging in to Airzone Cloud');
+  await connectToAirzone();
+  if (!airzone.isLoggedIn()) {
+    throw new Error('Fill in your Airzone Cloud email and password first');
+  }
+  const { zones, airQualitySensors } = await airzone.listDevices();
+  await reportConnectionStatus(true);
+  return {
+    en: `Airzone Cloud OK: ${zones.length} zone(s) and ${airQualitySensors.length} air-quality sensor(s) found.`,
+    fr: `Airzone Cloud OK : ${zones.length} zone(s) et ${airQualitySensors.length} capteur(s) de qualité d'air trouvés.`,
+  };
+});
+
+gladys.onAction('refresh_devices', async () => {
+  logger.info('Action refresh_devices -> reloading the Airzone Cloud devices');
+  if (!airzone.isLoggedIn() && !(await connectToAirzone())) {
+    throw new Error('Fill in your Airzone Cloud email and password first');
+  }
+  const devices = await publishDevices();
+  return {
+    en: `${devices.length} Airzone device(s) republished to Gladys.`,
+    fr: `${devices.length} appareil(s) Airzone republiés dans Gladys.`,
+  };
 });
 
 // --- Configuration updated by the user ---------------------------------------
@@ -235,31 +275,40 @@ gladys.onConfigUpdated(async (newConfig) => {
       await publishDevices();
     }
   } catch (err) {
-    logger.error('Reconnection to Airzone Cloud failed', err);
+    logger.error(`Reconnection to Airzone Cloud failed: ${err.message}`);
+    await reportConnectionStatus(false, {
+      en: 'Connection to Airzone Cloud failed, check your credentials and the integration logs.',
+      fr: "La connexion à Airzone Cloud a échoué, vérifiez vos identifiants et les logs de l'intégration.",
+    });
   }
 });
 
 // --- Connection lifecycle ----------------------------------------------------
+// The SDK itself logs the WebSocket lifecycle (connections, disconnections,
+// reconnection attempts) under the `gladys-sdk` name: no need to log it again
+// here, this handler only runs the integration's own (re)initialization.
 gladys.on('connected', async () => {
-  logger.info('WebSocket connected to Gladys');
   try {
     // 1) Fetch the config filled in by the user.
     config = normalizeConfig(await gladys.getConfig());
 
-    // 2) Log in to Airzone Cloud and publish the devices.
+    // 2) Log in to Airzone Cloud and publish the devices (this also reports the
+    // application-level connection status).
     if (await connectToAirzone()) {
       await publishDevices();
     }
   } catch (err) {
-    logger.error('Post-connection initialization failed', err);
+    logger.error(`Post-connection initialization failed: ${err.message}`);
+    await reportConnectionStatus(false, {
+      en: 'Connection to Airzone Cloud failed, check your credentials and the integration logs.',
+      fr: "La connexion à Airzone Cloud a échoué, vérifiez vos identifiants et les logs de l'intégration.",
+    });
   }
 });
 
-gladys.on('disconnected', () => {
-  logger.warn('WebSocket disconnected - the SDK will try to reconnect');
-});
-
 // --- Graceful shutdown -------------------------------------------------------
+// The SDK disconnects cleanly and exits with code 0 when the supervisor stops
+// the container (SIGTERM/SIGINT).
 gladys.handleShutdown((signal) => {
   logger.info(`Received ${signal} -> graceful shutdown`);
 });

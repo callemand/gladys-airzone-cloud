@@ -306,3 +306,8 @@ export class AirzoneCloudClient {
     return text ? JSON.parse(text) : {};
   }
 }
+
+// The client used by the integration: a single Airzone Cloud session shared by
+// the entry point (login, discovery) and the device modules (poll, commands).
+// The class stays exported for the tests, which point it at a fake API.
+export const airzone = new AirzoneCloudClient();
