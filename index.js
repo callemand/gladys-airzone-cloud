@@ -27,6 +27,7 @@ import {
 } from './src/devices/convertDevice.js';
 import { buildPollStates, buildSetZoneChange } from './src/devices/zone.js';
 import { buildAirQualityPollStates } from './src/devices/airQualitySensor.js';
+import { FEATURE_CODES } from './src/constants.js';
 
 const gladys = new GladysIntegration();
 const airzone = new AirzoneCloudClient();
@@ -73,20 +74,55 @@ async function connectToAirzone() {
 
 /**
  * Load the zones and air-quality sensors from Airzone Cloud and publish them as
- * discovered devices.
+ * discovered devices. A device whose Airzone status could not be read is left
+ * out: its features (available modes, temperature range) are built from that
+ * status, so publishing it would expose an incomplete device.
  */
 async function publishDevices() {
-  const [zones, airQualitySensors] = await Promise.all([
-    airzone.listZones(),
-    airzone.listAirQualitySensors(),
-  ]);
+  const { zones, airQualitySensors } = await airzone.listDevices();
+  const unavailable = [...zones, ...airQualitySensors].filter(({ status }) => !status);
+  if (unavailable.length > 0) {
+    logger.warn(
+      `${unavailable.length} Airzone device(s) skipped, their status is unavailable: ` +
+        unavailable.map(({ name, device_id: deviceId }) => name || deviceId).join(', '),
+    );
+  }
   logger.info(
     `${zones.length} Airzone Cloud zones and ${airQualitySensors.length} air-quality sensors found`,
   );
-  await gladys.publishDiscoveredDevices([
-    ...zones.map((zone) => convertDevice(gladys, zone)),
-    ...airQualitySensors.map((sensor) => convertAirQualitySensor(gladys, sensor)),
-  ]);
+
+  const devices = [
+    ...zones.filter(({ status }) => status).map((zone) => convertDevice(gladys, zone)),
+    ...airQualitySensors
+      .filter(({ status }) => status)
+      .map((sensor) => convertAirQualitySensor(gladys, sensor)),
+  ];
+  await gladys.publishDiscoveredDevices(devices);
+  await warnAboutDevicesNotAddedInGladys(devices);
+}
+
+/**
+ * Point out the Airzone devices that exist in Airzone Cloud but have no Gladys
+ * device yet: they are only listed in the "Discover" tab until the user adds
+ * them, and Gladys silently drops the states published for a device it does not
+ * know — which looks exactly like a device that reports nothing.
+ * @param {Array} devices the discovered devices published to Gladys
+ */
+async function warnAboutDevicesNotAddedInGladys(devices) {
+  try {
+    const gladysDevices = await gladys.getDevices();
+    const knownExternalIds = new Set(gladysDevices.map(({ external_id: id }) => id));
+    const missing = devices.filter(({ external_id: id }) => !knownExternalIds.has(id));
+    if (missing.length > 0) {
+      logger.warn(
+        `${missing.length}/${devices.length} Airzone device(s) are not added in Gladys yet ` +
+          '(no state can be recorded for them, add them from the integration "Discover" tab): ' +
+          missing.map(({ name }) => name).join(', '),
+      );
+    }
+  } catch (err) {
+    logger.warn(`Could not check which Airzone devices exist in Gladys: ${err.message}`);
+  }
 }
 
 // --- Discovery: Gladys asks for the list of devices --------------------------
@@ -101,30 +137,83 @@ gladys.onScanRequest(async () => {
 // --- Command: the user acts on a controllable feature ------------------------
 gladys.onSetValue(async (device, feature, value) => {
   logger.info(`onSetValue <- ${feature.external_id} = ${value}`);
-  const { deviceId } = parseExternalId(device.external_id);
-  const installationId = getInstallationId(device);
-  const featureCode = feature.external_id.split(':').pop();
+  try {
+    const { deviceId } = parseExternalId(device.external_id);
+    const installationId = getInstallationId(device);
+    const featureCode = feature.external_id.split(':').pop();
 
-  const change = buildSetZoneChange(featureCode, value);
-  if (!change) {
-    throw new Error(`Airzone feature "${feature.external_id}" is not controllable`);
+    const change = buildSetZoneChange(featureCode, value);
+    if (!change) {
+      throw new Error(`Airzone feature "${feature.external_id}" is not controllable`);
+    }
+
+    await airzone.setZoneParam(deviceId, installationId, change);
+  } catch (err) {
+    // The SDK only acks the command as failed: without this, the reason of a
+    // failed command never reaches the integration logs.
+    logger.error(`onSetValue ${feature.external_id} failed: ${err.message}`);
+    throw err;
   }
-
-  await airzone.setZoneParam(deviceId, installationId, change);
 });
 
 // --- Polling: Gladys asks to refresh a device --------------------------------
-gladys.onPoll(async (device) => {
-  const { slug, deviceId } = parseExternalId(device.external_id);
-  const installationId = getInstallationId(device);
 
-  const status = await airzone.getZoneStatus(deviceId, installationId);
-  const states =
-    slug === AIR_QUALITY_SLUG
+// Devices already reported as publishing no temperature (warn once per device,
+// a poll runs every minute).
+const temperatureWarnings = new Set();
+
+/**
+ * Warn when a zone poll publishes no room temperature: either Airzone does not
+ * deliver `local_temp` for this zone (no thermostat), or it names the field
+ * differently — the status field names make it possible to tell.
+ * @param {object} device the Gladys device being polled
+ * @param {object} status the Airzone zone status
+ * @param {Array} states the states about to be published
+ */
+function warnAboutMissingRoomTemperature(device, status, states) {
+  const { deviceId } = parseExternalId(device.external_id);
+  const roomTemperatureId = zoneExternalIds(gladys, deviceId).feature(
+    FEATURE_CODES.ROOM_TEMPERATURE,
+  );
+  const hasRoomTemperature = states.some(
+    ({ device_feature_external_id: id }) => id === roomTemperatureId,
+  );
+  if (hasRoomTemperature) {
+    temperatureWarnings.delete(device.external_id);
+    return;
+  }
+  if (temperatureWarnings.has(device.external_id)) {
+    return;
+  }
+  temperatureWarnings.add(device.external_id);
+  logger.warn(
+    `The Airzone zone "${device.selector || device.external_id}" reports no room temperature ` +
+      `(no usable "local_temp"). Status fields: ${Object.keys(status || {}).join(', ')}`,
+  );
+}
+
+gladys.onPoll(async (device) => {
+  try {
+    const { slug, deviceId } = parseExternalId(device.external_id);
+    const installationId = getInstallationId(device);
+
+    const status = await airzone.getZoneStatus(deviceId, installationId);
+    const isAirQuality = slug === AIR_QUALITY_SLUG;
+    const states = isAirQuality
       ? buildAirQualityPollStates(airQualityExternalIds(gladys, deviceId), status)
       : buildPollStates(zoneExternalIds(gladys, deviceId), status);
-  if (states.length > 0) {
-    await gladys.publishStates(states);
+    if (!isAirQuality) {
+      warnAboutMissingRoomTemperature(device, status, states);
+    }
+    logger.debug(`onPoll ${device.external_id} -> ${states.length} states`);
+    if (states.length > 0) {
+      await gladys.publishStates(states);
+    }
+  } catch (err) {
+    // Same as onSetValue: a failed poll is otherwise invisible in the logs of
+    // the integration, and only shows up as a device that stopped reporting.
+    logger.error(`onPoll ${device.external_id} failed: ${err.message}`);
+    throw err;
   }
 });
 

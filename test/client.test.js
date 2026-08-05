@@ -44,6 +44,16 @@ function startFakeAirzone(behaviour) {
         respond(401, {});
         return;
       }
+      if (behaviour.rateLimitedResponses > 0) {
+        behaviour.rateLimitedResponses -= 1;
+        res.writeHead(429, { 'Content-Type': 'application/json', 'Retry-After': '0' });
+        res.end(JSON.stringify({ message: 'Too many requests' }));
+        return;
+      }
+      if (behaviour.failStatusOf && url.pathname === `/devices/${behaviour.failStatusOf}/status`) {
+        respond(400, { message: 'nope' });
+        return;
+      }
       if (url.pathname === '/installations') {
         respond(200, INSTALLATIONS_RESPONSE);
         return;
@@ -79,6 +89,8 @@ test('AirzoneCloudClient', async (t) => {
     loginResponse: { token: 'access-1', refreshToken: 'refresh-1' },
     refreshResponse: { token: 'access-2', refreshToken: 'refresh-2' },
     failNextWith401: false,
+    rateLimitedResponses: 0,
+    failStatusOf: null,
   };
   const { server, requests, port } = await startFakeAirzone(behaviour);
   t.after(() => server.close());
@@ -93,26 +105,39 @@ test('AirzoneCloudClient', async (t) => {
     assert.deepEqual(login.body, { email: 'user@example.com', password: 'secret' });
   });
 
-  await t.test('listZones flattens installations and keeps only zones', async () => {
-    const zones = await client.listZones();
+  await t.test('listDevices flattens installations and splits zones from sensors', async () => {
+    const before = requests.length;
+    const { zones, airQualitySensors } = await client.listDevices();
+
     assert.deepEqual(
       zones.map((z) => z.device_id),
       ['zone-1'],
     );
     assert.equal(zones[0].installationId, 'install-1');
     assert.deepEqual(zones[0].status, ZONE_STATUS);
+
+    assert.deepEqual(
+      airQualitySensors.map((s) => s.device_id),
+      ['airq-1'],
+    );
+    assert.equal(airQualitySensors[0].installationId, 'install-1');
+    assert.deepEqual(airQualitySensors[0].status, AIR_QUALITY_STATUS);
+
+    // The installation tree is walked once for both device types: installations,
+    // installations/install-1, then one status per device (in parallel).
+    const paths = requests.slice(before).map((r) => r.path);
+    assert.deepEqual(paths.slice(0, 2), ['/installations', '/installations/install-1']);
+    assert.deepEqual(paths.slice(2).sort(), ['/devices/airq-1/status', '/devices/zone-1/status']);
     // Every authenticated request carried the access token.
     assert.equal(requests.at(-1).authorization, 'Bearer access-1');
   });
 
-  await t.test('listAirQualitySensors keeps only az_airqsensor devices', async () => {
-    const sensors = await client.listAirQualitySensors();
-    assert.deepEqual(
-      sensors.map((s) => s.device_id),
-      ['airq-1'],
-    );
-    assert.equal(sensors[0].installationId, 'install-1');
-    assert.deepEqual(sensors[0].status, AIR_QUALITY_STATUS);
+  await t.test('listDevices reports a device whose status is unavailable', async () => {
+    behaviour.failStatusOf = 'airq-1';
+    const { zones, airQualitySensors } = await client.listDevices();
+    behaviour.failStatusOf = null;
+    assert.deepEqual(zones[0].status, ZONE_STATUS);
+    assert.equal(airQualitySensors[0].status, null);
   });
 
   await t.test('getZoneStatus passes the installation id and unwraps the status', async () => {
@@ -150,6 +175,24 @@ test('AirzoneCloudClient', async (t) => {
     // 401 -> refreshToken -> retried with the new access token.
     assert.equal(requests.at(-2).path.startsWith('/auth/refreshToken/'), true);
     assert.equal(requests.at(-1).authorization, 'Bearer access-2');
+  });
+
+  await t.test('a rate-limited request (HTTP 429) is retried', async () => {
+    behaviour.rateLimitedResponses = 1;
+    const before = requests.length;
+    const status = await client.getZoneStatus('zone-1', 'install-1');
+    assert.deepEqual(status, ZONE_STATUS);
+    // The rejected request plus its retry.
+    assert.equal(requests.length - before, 2);
+  });
+
+  await t.test('a request rejected on every attempt throws the HTTP error', async () => {
+    behaviour.rateLimitedResponses = 10;
+    await assert.rejects(
+      () => client.getZoneStatus('zone-1', 'install-1'),
+      /HTTP 429 .*Too many requests/,
+    );
+    behaviour.rateLimitedResponses = 0;
   });
 
   await t.test('a login without a token throws', async () => {

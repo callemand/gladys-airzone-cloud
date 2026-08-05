@@ -18,8 +18,10 @@ If your installation includes an Airzone air-quality sensor, it is published as
 its own device exposing temperature, humidity, CO2, PM2.5, PM10, TVOC, pressure
 and a global air-quality index (all read-only, with history).
 
-Zone states are refreshed every 10 seconds, so changes made from the Airzone
-thermostat or the Airzone Cloud app show up in Gladys shortly after.
+Zone states are refreshed every minute, so changes made from the Airzone
+thermostat or the Airzone Cloud app show up in Gladys shortly after. That
+frequency is deliberately moderate: the Airzone Cloud API rate-limits the number
+of requests per account.
 
 ## Prerequisites
 
@@ -52,9 +54,16 @@ list automatically.
   [airzonecloud.com](https://airzonecloud.com).
 - **A zone is missing from Discovery** — make sure it is visible in the Airzone
   Cloud app with the same account, then run the discovery again.
+- **Some zones report no temperature** — first make sure those zones have been
+  **added** from the Discovery screen: a zone that is only discovered is not a
+  Gladys device yet, and the states published for it are ignored. The
+  integration logs list the zones that are discovered but not added on every
+  start. If the zone is added, its logs tell why the refresh fails (Airzone
+  error) or that Airzone reports no room temperature for it (zone without a
+  thermostat).
 - **Commands seem ignored** — Airzone can take a few seconds to push a command
   to the unit; the state in Gladys reflects the cloud state and catches up at
-  the next 10-second poll. Also check that the installation is online in the
+  the next poll (one minute). Also check that the installation is online in the
   Airzone Cloud app (webserver connected).
 - **States stop updating** — the Airzone session may have expired; the
   integration refreshes its token automatically. If the problem persists, check

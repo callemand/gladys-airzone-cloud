@@ -188,6 +188,15 @@ test('the integration discovers, polls and controls Airzone zones', async (t) =>
       ],
     );
 
+    // The fake Gladys host has no device created yet: the integration must say
+    // so, a device absent from Gladys silently drops the states we publish.
+    await waitUntil(
+      () => /are not added in Gladys yet/.test(output),
+      `missing devices warning\n${output}`,
+    );
+    assert.match(output, /2\/2 Airzone device\(s\) are not added in Gladys yet/);
+    assert.match(output, /Living room, Air quality/);
+
     const airq = devices.find((d) => d.external_id === `ext:${SELECTOR}:airq:airq-1`);
     assert.ok(airq, 'the air-quality sensor was published');
     assert.equal(airq.name, 'Air quality');
