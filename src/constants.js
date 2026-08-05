@@ -41,9 +41,11 @@ export const TVOC_BOUNDS = { MIN: 0, MAX: 60000 }; // ppb
 export const PRESSURE_BOUNDS = { MIN: 800, MAX: 1200 }; // hPa
 export const AIR_QUALITY_INDEX_BOUNDS = { MIN: 0, MAX: 100 }; // Airzone aq_score
 
-// Devices are polled every 10 seconds, like the built-in cloud services
-// (must be one of the Gladys DEVICE_POLL_FREQUENCIES values, in milliseconds).
-export const POLL_FREQUENCY = 10 * 1000;
+// Devices are polled every minute: the Airzone Cloud API rate-limits (HTTP 429)
+// and every device poll is a separate request, so a tighter interval quickly
+// exhausts the quota. Must be one of the Gladys DEVICE_POLL_FREQUENCIES values
+// (in milliseconds); 60 s is the coarsest available.
+export const POLL_FREQUENCY = 60 * 1000;
 
 // Airzone Cloud API. The env var override is only used by the test suite.
 export const AIRZONE_ENDPOINT = (

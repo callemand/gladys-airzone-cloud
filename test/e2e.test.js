@@ -174,7 +174,7 @@ test('the integration discovers, polls and controls Airzone zones', async (t) =>
     const zone = devices.find((d) => d.external_id === `ext:${SELECTOR}:zone:zone-1`);
     assert.ok(zone, 'the zone was published');
     assert.equal(zone.name, 'Living room');
-    assert.equal(zone.poll_frequency, 10000);
+    assert.equal(zone.poll_frequency, 60000);
     assert.equal(zone.should_poll, true);
     assert.deepEqual(zone.params, [{ name: 'installationId', value: 'install-1' }]);
     assert.deepEqual(

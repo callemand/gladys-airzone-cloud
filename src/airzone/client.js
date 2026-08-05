@@ -20,7 +20,10 @@ import { AIRZONE_ENDPOINT, AIRZONE_DEVICE_TYPES } from '../constants.js';
 
 const logger = createLogger({ name: 'airzone' });
 
-const REQUEST_TIMEOUT_MS = 15000;
+// Kept below the Gladys host command timeout (5 s): a slow Airzone request must
+// fail on our side with a clear error rather than let the whole poll/set-value
+// command time out on the Gladys side.
+const REQUEST_TIMEOUT_MS = 4000;
 
 export class AirzoneCloudClient {
   constructor(baseUrl = AIRZONE_ENDPOINT) {

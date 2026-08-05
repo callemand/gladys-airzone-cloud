@@ -27,7 +27,7 @@ test('convertDevice converts a zone', () => {
   assert.equal(device.name, 'Living room');
   assert.equal(device.external_id, 'ext:airzone-cloud:zone:zone-1');
   assert.equal(device.model, 'ws_az');
-  assert.equal(device.poll_frequency, 10000);
+  assert.equal(device.poll_frequency, 60000);
   assert.equal(device.should_poll, true);
   assert.equal(device.features.length, 5);
   assert.deepEqual(device.params, [{ name: 'installationId', value: 'install-1' }]);
