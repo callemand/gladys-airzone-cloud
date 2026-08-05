@@ -152,7 +152,8 @@ test('the integration discovers, polls and controls Airzone zones', async (t) =>
       GLADYS_INTEGRATION_TOKEN: TOKEN,
       GLADYS_INTEGRATION_SELECTOR: SELECTOR,
       AIRZONE_ENDPOINT: `http://127.0.0.1:${airzone.port}`,
-      LOG_LEVEL: 'debug',
+      // No LOG_LEVEL: same as the container started by Gladys, which only
+      // injects the GLADYS_* variables (the SDK then logs at `info`).
     },
   });
   child.stdout.on('data', (d) => {
@@ -346,6 +347,18 @@ test('the integration discovers, polls and controls Airzone zones', async (t) =>
       gladys.state.discoveredDevicePosts.length > publishedBefore,
       'the action republished the devices',
     );
+  });
+
+  await t.test('the verbose logs option switches the log level at runtime', async () => {
+    // Gladys does not inject LOG_LEVEL: without the option, debug lines stay out
+    // of the Logs tab.
+    assert.doesNotMatch(output, /\[DEBUG\]/);
+
+    send('external-integration.config-updated', {
+      config: { email: 'user@example.com', password: 'secret', verbose_logs: true },
+    });
+    await waitUntil(() => /\[DEBUG\]/.test(output), `debug logs\n${output}`);
+    assert.match(output, /Verbose logs enabled/);
   });
 
   await t.test('a failing poll flags the device transport as degraded', async () => {

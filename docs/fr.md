@@ -41,7 +41,10 @@ le nombre de requêtes par compte.
 2. Ouvrez son écran de **Configuration** et renseignez :
    - **E-mail Airzone Cloud** — l'adresse e-mail de votre compte Airzone Cloud ;
    - **Mot de passe Airzone Cloud** — le mot de passe de ce compte (stocké comme
-     secret, jamais réaffiché).
+     secret, jamais réaffiché) ;
+   - **Journaux détaillés** — à cocher uniquement pour diagnostiquer un
+     problème : chaque rafraîchissement est alors journalisé en détail dans
+     l'onglet Journaux. La bascule est immédiate, sans redémarrage.
 3. Enregistrez. L'intégration se connecte à Airzone Cloud et charge vos zones.
 4. Ouvrez l'écran **Découverte** : vos zones y sont listées. Ajoutez celles que
    vous voulez, puis placez-les dans vos pièces et tableaux de bord comme
@@ -90,4 +93,5 @@ reconnecte et rafraîchit la liste des zones automatiquement.
 - **Les états ne se mettent plus à jour** — la session Airzone a pu expirer ;
   l'intégration rafraîchit son jeton automatiquement. Si le problème persiste,
   consultez les journaux de l'intégration depuis sa page de configuration dans
-  Gladys.
+  Gladys (cochez d'abord **Journaux détaillés** pour avoir le détail de chaque
+  rafraîchissement).

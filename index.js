@@ -20,7 +20,7 @@ import { readFileSync } from 'node:fs';
 
 import { DEVICE_TRANSPORTS, GladysIntegration, logger } from '@gladysassistant/integration-sdk';
 import { airzone } from './src/airzone/client.js';
-import { normalizeConfig } from './src/config.js';
+import { applyLogLevel, normalizeConfig } from './src/config.js';
 import {
   buildDiscoveredDevices,
   buildTransportEntries,
@@ -39,6 +39,7 @@ const { version: VERSION } = JSON.parse(
 
 // Current configuration (hot-reloaded via onConfigUpdated).
 let config = normalizeConfig();
+applyLogLevel(config);
 
 // Devices whose last refresh failed: their transport badge carries a degraded
 // flag until the next successful poll (published on transitions only).
@@ -270,6 +271,7 @@ gladys.onAction('refresh_devices', async () => {
 gladys.onConfigUpdated(async (newConfig) => {
   logger.info('onConfigUpdated -> reconnecting to Airzone Cloud');
   config = normalizeConfig(newConfig);
+  applyLogLevel(config);
   try {
     if (await connectToAirzone()) {
       await publishDevices();
@@ -291,6 +293,7 @@ gladys.on('connected', async () => {
   try {
     // 1) Fetch the config filled in by the user.
     config = normalizeConfig(await gladys.getConfig());
+    applyLogLevel(config);
 
     // 2) Log in to Airzone Cloud and publish the devices (this also reports the
     // application-level connection status).

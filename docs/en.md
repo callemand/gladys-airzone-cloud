@@ -37,7 +37,10 @@ of requests per account.
 2. Open its **Configuration** screen and fill in:
    - **Airzone Cloud email** — the email address of your Airzone Cloud account;
    - **Airzone Cloud password** — the password of that account (stored as a
-     secret, never displayed back).
+     secret, never displayed back);
+   - **Verbose logs** — tick it only to diagnose a problem: every refresh is
+     then logged in detail in the Logs tab. It takes effect immediately, no
+     restart needed.
 3. Save. The integration logs in to Airzone Cloud and loads your zones.
 4. Open the **Discovery** screen: your zones are listed there. Add the ones you
    want, then place them in your rooms and dashboards like any Gladys device.
@@ -80,4 +83,5 @@ list automatically.
   Airzone Cloud app (webserver connected).
 - **States stop updating** — the Airzone session may have expired; the
   integration refreshes its token automatically. If the problem persists, check
-  the integration logs from its configuration page in Gladys.
+  the integration logs from its configuration page in Gladys (tick **Verbose
+  logs** first to get the detail of every refresh).

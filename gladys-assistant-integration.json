@@ -45,6 +45,19 @@
         "fr": "••••••••"
       },
       "required": true
+    },
+    {
+      "key": "verbose_logs",
+      "type": "boolean",
+      "label": {
+        "en": "Verbose logs",
+        "fr": "Journaux détaillés"
+      },
+      "description": {
+        "en": "Log the details of every refresh (one line per device and per Airzone request) in the Logs tab. Useful to diagnose a device that reports nothing; leave it off the rest of the time.",
+        "fr": "Journalise le détail de chaque rafraîchissement (une ligne par appareil et par requête Airzone) dans l'onglet Journaux. Utile pour diagnostiquer un appareil qui ne remonte rien ; à laisser désactivé le reste du temps."
+      },
+      "default": false
     }
   ],
   "actions": [
