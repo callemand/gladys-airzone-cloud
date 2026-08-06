@@ -7,14 +7,36 @@ process.env.LOG_LEVEL = 'info';
 const { applyLogLevel, normalizeConfig } = await import('../src/config.js');
 
 test('normalizeConfig fills in the defaults', () => {
-  assert.deepEqual(normalizeConfig(), { email: null, password: null, verbose_logs: false });
+  assert.deepEqual(normalizeConfig(), {
+    email: null,
+    password: null,
+    local_host: null,
+    local_port: null,
+    prefer_local: true,
+    verbose_logs: false,
+  });
   assert.deepEqual(normalizeConfig({ email: 'a@b.c', password: 'x', verbose_logs: true }), {
     email: 'a@b.c',
     password: 'x',
+    local_host: null,
+    local_port: null,
+    prefer_local: true,
     verbose_logs: true,
   });
   // Only a real `true` enables the verbose logs (Gladys can send a string).
   assert.equal(normalizeConfig({ verbose_logs: 'false' }).verbose_logs, false);
+});
+
+test('normalizeConfig reads the local API settings', () => {
+  const config = normalizeConfig({ local_host: '  192.168.1.10 ', local_port: '3000' });
+  assert.equal(config.local_host, '192.168.1.10');
+  assert.equal(config.local_port, 3000);
+  // An empty address means "no local API".
+  assert.equal(normalizeConfig({ local_host: '   ' }).local_host, null);
+  // The reserved Gladys key drives the local preference; absent means preferred.
+  assert.equal(normalizeConfig({}).prefer_local, true);
+  assert.equal(normalizeConfig({ GLADYS_PREFER_LOCAL: false }).prefer_local, false);
+  assert.equal(normalizeConfig({ GLADYS_PREFER_LOCAL: true }).prefer_local, true);
 });
 
 test('applyLogLevel switches the level and restores the initial one', (t) => {

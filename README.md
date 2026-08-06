@@ -44,6 +44,10 @@ template with the JavaScript SDK
   | Air quality index | `airquality-sensor` / aqi      | Airzone `aq_score` (0-100)   |
 
 - Zones are **polled every minute** and the states are pushed back to Gladys.
+- Two channels: the **local API** of the webserver (`POST /api/v1/hvac`) when its
+  address is configured, the **cloud API** otherwise and as a fallback. Discovery
+  always goes through the cloud: it owns the device identity, and it gives the
+  system/zone numbers the local API addresses (stored as device params).
 - Requests go through a scheduler capping the parallelism, and a rate-limited
   request (HTTP 429) is retried with a backoff applied to the whole account.
 - User commands are written back with `PATCH /devices/{id}` (`{ param, value, installation_id }`).
@@ -60,10 +64,12 @@ template with the JavaScript SDK
 ├─ index.js                          # SDK bootstrap + event wiring
 ├─ src/
 │  ├─ airzone/client.js              # Airzone Cloud API client (fetch) + session
+│  ├─ airzone/localClient.js         # Airzone LOCAL API client (webserver, LAN)
 │  ├─ airzone/scheduler.js           # request parallelism cap + global backoff
 │  ├─ devices/index.js               # device type registry + command dispatch
 │  ├─ devices/common.js              # external ids, feature selectors, params
 │  ├─ devices/zone.js                # zone device type (features, poll, commands)
+│  ├─ devices/zoneLocal.js           # local API <-> Gladys states of a zone
 │  ├─ devices/airQualitySensor.js    # air-quality sensor device type
 │  ├─ constants.js                   # Airzone constants (+ AC modes, poll frequency)
 │  └─ config.js                      # config defaults + normalization

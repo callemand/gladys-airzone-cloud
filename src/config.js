@@ -12,6 +12,9 @@ import { logger } from '@gladysassistant/integration-sdk';
 export const DEFAULT_CONFIG = {
   email: null,
   password: null,
+  local_host: null,
+  local_port: null,
+  prefer_local: true,
   verbose_logs: false,
 };
 
@@ -31,6 +34,13 @@ export function normalizeConfig(raw = {}) {
     ...DEFAULT_CONFIG,
     email: raw.email || null,
     password: raw.password || null,
+    local_host: raw.local_host ? String(raw.local_host).trim() || null : null,
+    local_port: Number(raw.local_port) || null,
+    // GLADYS_PREFER_LOCAL is the reserved (read-only) key behind the standard
+    // "Prefer the local connection" toggle Gladys shows for a dual-channel
+    // integration. Absent means "not answered yet": the local API is preferred
+    // whenever it is configured, since it costs nothing and is not rate-limited.
+    prefer_local: raw.GLADYS_PREFER_LOCAL !== false,
     verbose_logs: raw.verbose_logs === true,
   };
 }

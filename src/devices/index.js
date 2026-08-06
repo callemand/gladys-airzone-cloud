@@ -7,10 +7,12 @@
 //     a Gladys command back to the right device type (`zone`, `airq`)
 //   - buildDevice(gladys, entry)    : the discovery payload of ONE device, from
 //     its Airzone Cloud entry
-//   - onPoll(gladys, context)        (optional): periodic read + publishStates
+//   - onPoll(gladys, context)        (optional): periodic read + publishStates.
+//     May return `{ transport, degraded, message }`: the channel it ACTUALLY
+//     used, which index.js publishes as the device's transport badge
 //   - onSetValue(gladys, context)    (optional): run a user command
-//   - transport(gladys)              (optional): effective transport of the
-//     device, shown as a badge in Gladys
+//   - transport(gladys, config)      (optional): channel the device is expected
+//     to use, shown as a badge in Gladys
 //
 // Unlike the official template, where each blueprint stands for ONE static
 // device, an Airzone account exposes an arbitrary number of devices per type
@@ -54,16 +56,17 @@ export function findTypeByDevice(gladys, device) {
  * each device is actually reached through, rendered as a badge in Gladys.
  * @param {import('@gladysassistant/integration-sdk').GladysIntegration} gladys
  * @param {Array} devices the discovered devices published to Gladys
+ * @param {object} config the integration config
  * @returns {Array} entries for gladys.publishTransports()
  */
-export function buildTransportEntries(gladys, devices) {
+export function buildTransportEntries(gladys, devices, config) {
   return devices
     .map((device) => {
       const { type } = findTypeByDevice(gladys, device);
       if (!type || typeof type.transport !== 'function') {
         return null;
       }
-      const reported = type.transport(gladys);
+      const reported = type.transport(gladys, config);
       const entry = typeof reported === 'string' ? { transport: reported } : reported;
       return { external_id: device.external_id, ...entry };
     })

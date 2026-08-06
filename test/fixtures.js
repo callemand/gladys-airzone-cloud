@@ -3,11 +3,19 @@
 // only the master zone advertises `mode_available`, and air quality lives on a
 // dedicated az_airqsensor device).
 
+// The cloud exposes the system/zone numbers of a zone in its `meta` object; they
+// are what the LOCAL API uses to address that same zone.
+export const ZONE_META = {
+  system_number: 1,
+  zone_number: 2,
+};
+
 export const ZONE_DEVICE = {
   device_id: 'zone-1',
   name: 'Living room',
   type: 'az_zone',
   ws_type: 'ws_az',
+  meta: ZONE_META,
 };
 
 export const SYSTEM_DEVICE = {
@@ -75,4 +83,22 @@ export const AIR_QUALITY_STATUS = {
   aq_pressure: 1018,
   aq_score: 64,
   aq_quality: 'regular',
+};
+
+// POST /api/v1/hvac { systemID: 1, zoneID: 2 } on the LOCAL API: the same master
+// zone as ZONE_STATUS, in the local API's own shape (plain numbers, mode codes
+// starting at 1, `modes` instead of `mode_available`).
+export const LOCAL_ZONE_STATUS = {
+  systemID: 1,
+  zoneID: 2,
+  name: 'Living room',
+  on: 1,
+  mode: 3,
+  modes: [2, 3, 4, 5],
+  setpoint: 21,
+  roomTemp: 19.5,
+  humidity: 42,
+  maxTemp: 30,
+  minTemp: 16,
+  units: 0,
 };

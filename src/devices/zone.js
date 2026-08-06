@@ -18,6 +18,7 @@ import {
 } from '@gladysassistant/integration-sdk';
 
 import { airzone } from '../airzone/client.js';
+import { airzoneLocal } from '../airzone/localClient.js';
 import {
   AC_MODE,
   AIRZONE_MODE,
@@ -30,7 +31,13 @@ import {
   POLL_FREQUENCY,
   ROOM_TEMPERATURE_BOUNDS,
 } from '../constants.js';
-import { buildDeviceParams, externalIds, withFeatureSelectors } from './common.js';
+import {
+  buildDeviceParams,
+  externalIds,
+  getLocalZoneAddress,
+  withFeatureSelectors,
+} from './common.js';
+import { buildLocalPollStates, buildLocalSetChange } from './zoneLocal.js';
 
 export const ZONE_SLUG = 'zone';
 
@@ -309,6 +316,34 @@ export function buildSetZoneChange(featureCode, value) {
   }
 }
 
+// Last local status of each zone, kept for the temperature unit a setpoint write
+// needs (the local API expects the value in the unit of the installation).
+const lastLocalStatus = new Map();
+
+/**
+ * The local API address of a zone, when the local API can and should be used:
+ * configured by the user, preferred, not in a post-failure cooldown, and the
+ * device knows its system/zone numbers.
+ * @param {object} device the Gladys device
+ * @param {object} config the integration config
+ * @returns {{ systemId: number, zoneId: number }|null} the address, or null to
+ *   go through the cloud
+ */
+function localAddressOf(device, config) {
+  if (!config.prefer_local || !airzoneLocal.isUsable()) {
+    return null;
+  }
+  const address = getLocalZoneAddress(device);
+  if (!address) {
+    logger.debug(
+      `${device.external_id} has no system/zone number: staying on the cloud API ` +
+        '(republish the devices to get them)',
+    );
+    return null;
+  }
+  return address;
+}
+
 // --- Device type registry entry ----------------------------------------------
 
 export const zoneDevice = {
@@ -336,27 +371,91 @@ export const zoneDevice = {
   },
 
   /**
-   * Refresh one zone: read its Airzone status and publish its states.
+   * Refresh one zone: read its status — through the local API when it is
+   * available, otherwise through the cloud — and publish its states.
    * @param {import('@gladysassistant/integration-sdk').GladysIntegration} gladys
-   * @param {object} context `{ device, deviceId, installationId }`
+   * @param {object} context `{ device, deviceId, installationId, config }`
+   * @returns {Promise<object>} the channel actually used, for the transport badge
    */
-  async onPoll(gladys, { device, deviceId, installationId }) {
+  async onPoll(gladys, { device, deviceId, installationId, config }) {
+    const ids = externalIds(gladys, ZONE_SLUG, deviceId);
+    const local = localAddressOf(device, config);
+    let fallbackReason = null;
+
+    if (local) {
+      try {
+        const status = await airzoneLocal.getZoneStatus(local.systemId, local.zoneId);
+        lastLocalStatus.set(device.external_id, status);
+        const states = buildLocalPollStates(ids, status);
+        warnAboutMissingRoomTemperature(device, status, states);
+        logger.debug(`Polled ${device.external_id} locally -> ${states.length} states`);
+        if (states.length > 0) {
+          await gladys.publishStates(states);
+        }
+        return { transport: DEVICE_TRANSPORTS.LOCAL };
+      } catch (err) {
+        // The webserver is off, rebooting or its local API got disabled: fall
+        // back to the cloud and stop trying locally for a while.
+        fallbackReason = err.message;
+        airzoneLocal.noteFailure();
+        logger.warn(
+          `Local API failed for ${device.external_id} (${err.message}): falling back to the Airzone Cloud API`,
+        );
+      }
+    }
+
     const status = await airzone.getZoneStatus(deviceId, installationId);
-    const states = buildPollStates(externalIds(gladys, ZONE_SLUG, deviceId), status);
+    const states = buildPollStates(ids, status);
     warnAboutMissingRoomTemperature(device, status, states);
     logger.debug(`Polled ${device.external_id} -> ${states.length} states`);
     if (states.length > 0) {
       await gladys.publishStates(states);
     }
+    if (fallbackReason) {
+      return {
+        transport: DEVICE_TRANSPORTS.CLOUD,
+        degraded: true,
+        message: {
+          en: `Local API unreachable, using the cloud: ${fallbackReason}`.slice(0, 200),
+          fr: `API locale injoignable, passage par le cloud : ${fallbackReason}`.slice(0, 200),
+        },
+      };
+    }
+    return { transport: DEVICE_TRANSPORTS.CLOUD };
   },
 
   /**
-   * Run a user command on a zone feature.
+   * Run a user command on a zone feature, through the local API when available.
    * @param {import('@gladysassistant/integration-sdk').GladysIntegration} gladys
-   * @param {object} context `{ deviceId, installationId, feature, value }`
+   * @param {object} context `{ device, deviceId, installationId, feature, value, config }`
    */
-  async onSetValue(gladys, { deviceId, installationId, feature, value }) {
+  async onSetValue(gladys, { device, deviceId, installationId, feature, value, config }) {
     const featureCode = feature.external_id.split(':').pop();
+    const local = localAddressOf(device, config);
+
+    if (local) {
+      const localChange = buildLocalSetChange(
+        featureCode,
+        value,
+        lastLocalStatus.get(device.external_id),
+      );
+      if (!localChange) {
+        throw new Error(`Airzone feature "${feature.external_id}" is not controllable`);
+      }
+      try {
+        await airzoneLocal.setZoneParam(local.systemId, local.zoneId, localChange);
+        logger.debug(`Wrote ${feature.external_id} locally`);
+        return;
+      } catch (err) {
+        // A refused command is worth retrying through the cloud: the user is
+        // waiting for their action to happen.
+        airzoneLocal.noteFailure();
+        logger.warn(
+          `Local API failed for ${feature.external_id} (${err.message}): retrying through the Airzone Cloud API`,
+        );
+      }
+    }
+
     const change = buildSetZoneChange(featureCode, value);
     if (!change) {
       throw new Error(`Airzone feature "${feature.external_id}" is not controllable`);
@@ -364,9 +463,11 @@ export const zoneDevice = {
     await airzone.setZoneParam(deviceId, installationId, change);
   },
 
-  // A zone is always reached through the Airzone Cloud service: there is no
-  // local channel in this integration (the manifest declares `cloud` only).
-  transport() {
-    return DEVICE_TRANSPORTS.CLOUD;
+  // Channel a zone is expected to use. The poll refines it with what it ACTUALLY
+  // used (and flags a cloud fallback as degraded).
+  transport(gladys, config) {
+    return config.prefer_local && airzoneLocal.isConfigured()
+      ? DEVICE_TRANSPORTS.LOCAL
+      : DEVICE_TRANSPORTS.CLOUD;
   },
 };

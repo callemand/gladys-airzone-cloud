@@ -20,6 +20,7 @@ import { readFileSync } from 'node:fs';
 
 import { DEVICE_TRANSPORTS, GladysIntegration, logger } from '@gladysassistant/integration-sdk';
 import { airzone } from './src/airzone/client.js';
+import { airzoneLocal } from './src/airzone/localClient.js';
 import { applyLogLevel, normalizeConfig } from './src/config.js';
 import {
   buildDiscoveredDevices,
@@ -41,9 +42,9 @@ const { version: VERSION } = JSON.parse(
 let config = normalizeConfig();
 applyLogLevel(config);
 
-// Devices whose last refresh failed: their transport badge carries a degraded
-// flag until the next successful poll (published on transitions only).
-const degradedDevices = new Set();
+// Transport badge last published for each device, so only transitions are sent
+// (a poll runs every minute on every device).
+const lastTransportByDevice = new Map();
 
 /**
  * Report the application-level connection status, shown in the Configuration
@@ -65,6 +66,29 @@ async function reportConnectionStatus(connected, message) {
  * throwing) when the credentials are not filled in yet.
  * @returns {Promise<boolean>} whether the integration is logged in
  */
+/**
+ * Point the local API client at the webserver from the config, and probe it so
+ * the logs say up front whether the local channel will be used.
+ */
+async function configureLocalApi() {
+  if (!airzoneLocal.configure(config.local_host, config.local_port)) {
+    return;
+  }
+  if (!config.prefer_local) {
+    logger.info('Local API configured but the local connection is not preferred: using the cloud');
+    return;
+  }
+  try {
+    const { version } = await airzoneLocal.getVersion();
+    logger.info(`Local API reachable${version ? ` (version ${version})` : ''}: it will be used`);
+  } catch (err) {
+    airzoneLocal.noteFailure();
+    logger.warn(
+      `Local API unreachable (${err.message}): using the Airzone Cloud API, and retrying later`,
+    );
+  }
+}
+
 async function connectToAirzone() {
   if (!config.email || !config.password) {
     airzone.logout();
@@ -113,44 +137,61 @@ async function publishDevices() {
 }
 
 /**
- * Publish the effective transport of every device ('cloud' here: everything
- * goes through the Airzone Cloud service), rendered as a badge in the Gladys UI.
+ * Publish the expected channel of every device (local or cloud), rendered as a
+ * badge in the Gladys UI. Each poll then refines it with the channel it actually
+ * used.
  * @param {Array} devices the discovered devices published to Gladys
  */
 async function publishDeviceTransports(devices) {
-  const entries = buildTransportEntries(gladys, devices);
+  const entries = buildTransportEntries(gladys, devices, config);
   if (entries.length === 0) {
     return;
   }
-  // A device that had failed is nominal again as soon as it is republished.
-  entries.forEach(({ external_id: externalId }) => degradedDevices.delete(externalId));
+  entries.forEach((entry) => lastTransportByDevice.set(entry.external_id, describeEntry(entry)));
   await gladys.publishTransports(entries);
 }
 
 /**
- * Flag (or clear) the degraded state of one device's transport badge, so a zone
- * that stopped answering is visible in the UI and not only in the logs. Only
- * transitions are published: a poll runs every minute.
+ * Comparable description of a transport entry (to publish transitions only).
+ * @param {object} entry a transport entry
+ * @returns {string}
+ */
+function describeEntry(entry) {
+  return `${entry.transport}|${entry.degraded ? entry.message?.en : ''}`;
+}
+
+/**
+ * Publish the channel a device was actually reached through: local, cloud, or
+ * cloud flagged degraded (the local API refused, or Airzone refused the refresh
+ * altogether). Only transitions reach Gladys.
  * @param {object} device the Gladys device
  * @param {Error} [error] the error that made the refresh fail
+ * @param {object} [report] `{ transport, degraded, message }` reported by the device type
  */
-async function reportDeviceTransport(device, error) {
+async function reportDeviceTransport(device, error, report) {
   const externalId = device.external_id;
-  const isDegraded = degradedDevices.has(externalId);
-  if (Boolean(error) === isDegraded) {
+  let entry;
+  if (error) {
+    entry = {
+      external_id: externalId,
+      transport: report?.transport || DEVICE_TRANSPORTS.CLOUD,
+      degraded: true,
+      message: {
+        en: `Airzone refused the last refresh: ${error.message}`.slice(0, 200),
+        fr: `Airzone a refusé le dernier rafraîchissement : ${error.message}`.slice(0, 200),
+      },
+    };
+  } else if (report && report.transport) {
+    entry = { external_id: externalId, ...report };
+  } else {
     return;
   }
-  const entry = { external_id: externalId, transport: DEVICE_TRANSPORTS.CLOUD };
-  if (error) {
-    degradedDevices.add(externalId);
-    entry.degraded = true;
-    entry.message = {
-      en: `Airzone Cloud refused the last refresh: ${error.message}`.slice(0, 200),
-      fr: `Airzone Cloud a refusé le dernier rafraîchissement : ${error.message}`.slice(0, 200),
-    };
-  } else {
-    degradedDevices.delete(externalId);
+
+  const description = describeEntry(entry);
+  if (lastTransportByDevice.get(externalId) === description) {
+    return;
   }
+  lastTransportByDevice.set(externalId, description);
   try {
     await gladys.publishTransports([entry]);
   } catch (err) {
@@ -206,6 +247,7 @@ gladys.onSetValue(async (device, feature, value) => {
       installationId: getInstallationId(device),
       feature,
       value,
+      config,
     });
   } catch (err) {
     // The SDK only acks the command as failed: without this, the reason of a
@@ -223,12 +265,13 @@ gladys.onPoll(async (device) => {
     return;
   }
   try {
-    await type.onPoll(gladys, {
+    const report = await type.onPoll(gladys, {
       device,
       deviceId,
       installationId: getInstallationId(device),
+      config,
     });
-    await reportDeviceTransport(device);
+    await reportDeviceTransport(device, null, report);
   } catch (err) {
     // Same as onSetValue: a failed poll is otherwise invisible in the logs of
     // the integration, and only shows up as a device that stopped reporting.
@@ -273,6 +316,7 @@ gladys.onConfigUpdated(async (newConfig) => {
   config = normalizeConfig(newConfig);
   applyLogLevel(config);
   try {
+    await configureLocalApi();
     if (await connectToAirzone()) {
       await publishDevices();
     }
@@ -295,7 +339,10 @@ gladys.on('connected', async () => {
     config = normalizeConfig(await gladys.getConfig());
     applyLogLevel(config);
 
-    // 2) Log in to Airzone Cloud and publish the devices (this also reports the
+    // 2) Point the local API client at the webserver, when the user gave one.
+    await configureLocalApi();
+
+    // 3) Log in to Airzone Cloud and publish the devices (this also reports the
     // application-level connection status).
     if (await connectToAirzone()) {
       await publishDevices();

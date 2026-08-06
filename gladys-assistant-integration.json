@@ -10,9 +10,7 @@
   "docker_image": "ghcr.io/callemand/gladys-airzone-cloud:1.2.0",
   "gladys_version": ">=4.62.0",
   "cover_image": "https://raw.githubusercontent.com/callemand/gladys-airzone-cloud/main/cover.png",
-  "transports": [
-    "cloud"
-  ],
+  "transports": ["local", "cloud"],
   "config_schema": [
     {
       "key": "email",
@@ -47,6 +45,38 @@
         "fr": "••••••••"
       },
       "required": true
+    },
+    {
+      "key": "local_host",
+      "type": "string",
+      "label": {
+        "en": "Airzone webserver address (local API)",
+        "fr": "Adresse du webserver Airzone (API locale)"
+      },
+      "description": {
+        "en": "Optional. IP address or hostname of your Airzone webserver on your network. When it is filled in and its local API is enabled, Gladys reads and controls your zones locally: no rate limit, no latency, and no Airzone Cloud subscription needed. The cloud is still used to discover your zones, and as a fallback.",
+        "fr": "Optionnel. Adresse IP ou nom d'hôte de votre webserver Airzone sur votre réseau. Renseigné et son API locale activée, Gladys lit et pilote vos zones en local : pas de quota, pas de latence, et aucun abonnement Airzone Cloud nécessaire. Le cloud reste utilisé pour découvrir vos zones, et en repli."
+      },
+      "placeholder": {
+        "en": "192.168.1.42",
+        "fr": "192.168.1.42"
+      }
+    },
+    {
+      "key": "local_port",
+      "type": "number",
+      "label": {
+        "en": "Local API port",
+        "fr": "Port de l'API locale"
+      },
+      "description": {
+        "en": "Optional, 3000 by default (the Airzone local API port).",
+        "fr": "Optionnel, 3000 par défaut (le port de l'API locale Airzone)."
+      },
+      "placeholder": {
+        "en": "3000",
+        "fr": "3000"
+      }
     },
     {
       "key": "verbose_logs",

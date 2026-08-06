@@ -194,7 +194,11 @@ test('the integration discovers, polls and controls Airzone zones', async (t) =>
     assert.equal(zone.name, 'Living room');
     assert.equal(zone.poll_frequency, 60000);
     assert.equal(zone.should_poll, true);
-    assert.deepEqual(zone.params, [{ name: 'installationId', value: 'install-1' }]);
+    assert.deepEqual(zone.params, [
+      { name: 'installationId', value: 'install-1' },
+      { name: 'systemId', value: '1' },
+      { name: 'zoneId', value: '2' },
+    ]);
     assert.deepEqual(
       zone.features.map((f) => f.external_id),
       [
@@ -384,7 +388,7 @@ test('the integration discovers, polls and controls Airzone zones', async (t) =>
     assert.equal(entry.device_external_id, unknownDevice.external_id);
     assert.equal(entry.transport, 'cloud');
     assert.equal(entry.degraded, true);
-    assert.match(entry.message.en, /Airzone Cloud refused the last refresh/);
+    assert.match(entry.message.en, /Airzone refused the last refresh/);
     assert.match(output, /onPoll .*unknown-zone failed/);
   });
 });
