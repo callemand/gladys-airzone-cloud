@@ -77,9 +77,11 @@ const server = createServer((req, res) => {
       }));
       log(`discovered ${devices.length} device(s):`);
       payload.devices.forEach((device) => {
+        // `model` is the webserver type reported by Airzone (ws_type): it tells
+        // which hardware answers, and therefore whether the local API can exist.
+        log(`  - ${device.name} (${device.external_id}) model/ws_type: ${device.model}`);
         log(
-          `  - ${device.name} (${device.external_id}) ` +
-            `features: ${device.features.map((f) => f.external_id.split(':').pop()).join(', ')}`,
+          `    features: ${device.features.map((f) => f.external_id.split(':').pop()).join(', ')}`,
         );
         log(`    params: ${JSON.stringify(device.params)}`);
       });
