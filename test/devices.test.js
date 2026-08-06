@@ -36,7 +36,12 @@ test('buildDiscoveredDevices converts a zone', () => {
   assert.equal(device.poll_frequency, 60000);
   assert.equal(device.should_poll, true);
   assert.equal(device.features.length, 5);
-  assert.deepEqual(device.params, [{ name: 'installationId', value: 'install-1' }]);
+  // The system/zone numbers are stored: they are the local API address.
+  assert.deepEqual(device.params, [
+    { name: 'installationId', value: 'install-1' },
+    { name: 'systemId', value: '1' },
+    { name: 'zoneId', value: '2' },
+  ]);
 });
 
 test('buildDiscoveredDevices converts an az_airqsensor', () => {
@@ -100,9 +105,9 @@ test('only the zone type is controllable, both types poll', () => {
   DEVICE_TYPES.forEach((type) => assert.equal(typeof type.onPoll, 'function'));
 });
 
-test('every device reports the cloud transport', () => {
+test('every device reports the cloud transport without a local API', () => {
   const devices = buildDiscoveredDevices(gladys, INVENTORY);
-  assert.deepEqual(buildTransportEntries(gladys, devices), [
+  assert.deepEqual(buildTransportEntries(gladys, devices, { prefer_local: true }), [
     { external_id: 'ext:airzone-cloud:zone:zone-1', transport: 'cloud' },
     { external_id: 'ext:airzone-cloud:airq:airq-1', transport: 'cloud' },
   ]);

@@ -42,6 +42,9 @@ le nombre de requêtes par compte.
    - **E-mail Airzone Cloud** — l'adresse e-mail de votre compte Airzone Cloud ;
    - **Mot de passe Airzone Cloud** — le mot de passe de ce compte (stocké comme
      secret, jamais réaffiché) ;
+   - **Adresse du webserver Airzone (API locale)** — optionnel, mais recommandé :
+     voir la section « API locale » plus bas ;
+   - **Port de l'API locale** — optionnel, 3000 par défaut ;
    - **Journaux détaillés** — à cocher uniquement pour diagnostiquer un
      problème : chaque rafraîchissement est alors journalisé en détail dans
      l'onglet Journaux. La bascule est immédiate, sans redémarrage.

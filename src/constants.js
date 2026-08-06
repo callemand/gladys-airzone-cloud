@@ -140,3 +140,63 @@ export const FEATURE_CODES = {
   PRESSURE: 'pressure',
   AIR_QUALITY_INDEX: 'air-quality-index',
 };
+
+// -----------------------------------------------------------------------------
+// Airzone LOCAL API (the webserver's own API, port 3000 by default).
+//
+// Read:  POST http://<ip>:<port>/api/v1/hvac  { systemID, zoneID } -> { data: [zone] }
+// Write: PUT  http://<ip>:<port>/api/v1/hvac  { systemID, zoneID, <param>: value }
+// Probe: POST http://<ip>:<port>/api/v1/version
+//
+// It has to be enabled on the webserver, it answers on the LAN only, and it is
+// neither rate-limited nor tied to an Airzone Cloud subscription — which is why
+// it is preferred over the cloud whenever it is configured.
+// -----------------------------------------------------------------------------
+
+export const AIRZONE_LOCAL_DEFAULT_PORT = 3000;
+export const AIRZONE_LOCAL_PATHS = {
+  HVAC: 'api/v1/hvac',
+  VERSION: 'api/v1/version',
+  WEBSERVER: 'api/v1/webserver',
+};
+
+// Operation mode codes of the LOCAL API. They do NOT match the cloud ones
+// (AIRZONE_MODE above): the local API starts at 1 and puts AUTO at 7.
+export const AIRZONE_LOCAL_MODE = {
+  STOP: 1,
+  COOLING: 2,
+  HEATING: 3,
+  FAN: 4,
+  DRY: 5,
+  AUX_HEATING: 6,
+  AUTO: 7,
+};
+
+// Status/command field names of the local API.
+export const AIRZONE_LOCAL_FIELD = {
+  SYSTEM_ID: 'systemID',
+  ZONE_ID: 'zoneID',
+  ON: 'on',
+  MODE: 'mode',
+  MODES: 'modes',
+  SET_POINT: 'setpoint',
+  ROOM_TEMP: 'roomTemp',
+  HUMIDITY: 'humidity',
+  MAX_TEMP: 'maxTemp',
+  MIN_TEMP: 'minTemp',
+  UNITS: 'units',
+};
+
+// Temperature unit reported by the local API (`units` field).
+export const AIRZONE_LOCAL_UNITS = {
+  CELSIUS: 0,
+  FAHRENHEIT: 1,
+};
+
+// The local network is fast: a request that takes longer than this is a webserver
+// that is off, unreachable or has its local API disabled.
+export const AIRZONE_LOCAL_TIMEOUT_MS = 3000;
+
+// After a local failure, stop trying the local API for a while and use the cloud
+// instead: a webserver rebooting must not slow every poll down.
+export const AIRZONE_LOCAL_COOLDOWN_MS = 60 * 1000;

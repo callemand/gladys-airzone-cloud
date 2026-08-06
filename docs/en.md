@@ -38,6 +38,9 @@ of requests per account.
    - **Airzone Cloud email** — the email address of your Airzone Cloud account;
    - **Airzone Cloud password** — the password of that account (stored as a
      secret, never displayed back);
+   - **Airzone webserver address (local API)** — optional, but recommended: see
+     the "Local API" section below;
+   - **Local API port** — optional, 3000 by default;
    - **Verbose logs** — tick it only to diagnose a problem: every refresh is
      then logged in detail in the Logs tab. It takes effect immediately, no
      restart needed.

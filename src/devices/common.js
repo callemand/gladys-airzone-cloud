@@ -13,6 +13,15 @@
 
 export const INSTALLATION_ID_PARAM = 'installationId';
 
+// The local API addresses a zone by its system/zone numbers, which the cloud
+// exposes on the device entry. They are stored as device params at discovery, so
+// a poll or a command can go through the local API without a single cloud call.
+export const SYSTEM_ID_PARAM = 'systemId';
+export const ZONE_ID_PARAM = 'zoneId';
+
+// Where the cloud hides the system/zone numbers, in order of preference.
+const ZONE_NUMBER_SOURCES = ['meta', 'config', 'status'];
+
 /**
  * Build the external ids (device + feature factory) of an Airzone device.
  * @param {import('@gladysassistant/integration-sdk').GladysIntegration} gladys
@@ -64,12 +73,61 @@ export function withFeatureSelectors(features) {
 }
 
 /**
- * The device param carrying the Airzone installation id.
+ * Read the system/zone numbers of a cloud device entry. Airzone delivers them
+ * either at the root of the entry or inside its `meta` / `config` / `status`
+ * object, depending on the endpoint and the firmware.
+ * @param {object} entry Airzone device entry
+ * @returns {{ systemId: number, zoneId: number }|null} the numbers, or null
+ */
+export function readZoneNumbers(entry) {
+  const candidates = [entry, ...ZONE_NUMBER_SOURCES.map((key) => (entry || {})[key])];
+  for (const candidate of candidates) {
+    if (!candidate || typeof candidate !== 'object') {
+      continue;
+    }
+    const systemId = Number(candidate.system_number);
+    const zoneId = Number(candidate.zone_number);
+    if (Number.isFinite(systemId) && Number.isFinite(zoneId)) {
+      return { systemId, zoneId };
+    }
+  }
+  return null;
+}
+
+/**
+ * The device params: the Airzone installation id, plus the system/zone numbers
+ * when the cloud gives them (they are what the local API addresses).
  * @param {object} entry Airzone device entry (annotated with installationId)
  * @returns {Array} Gladys device params
  */
 export function buildDeviceParams(entry) {
-  return [{ name: INSTALLATION_ID_PARAM, value: entry.installationId }];
+  const params = [{ name: INSTALLATION_ID_PARAM, value: entry.installationId }];
+  const numbers = readZoneNumbers(entry);
+  if (numbers) {
+    params.push(
+      { name: SYSTEM_ID_PARAM, value: String(numbers.systemId) },
+      { name: ZONE_ID_PARAM, value: String(numbers.zoneId) },
+    );
+  }
+  return params;
+}
+
+/**
+ * Read the system/zone numbers stored in the device params, i.e. the local API
+ * address of the zone. Returns null for a device discovered before the local
+ * support existed (it has to be republished to gain them).
+ * @param {object} device Gladys device (as sent with poll / set-value commands)
+ * @returns {{ systemId: number, zoneId: number }|null}
+ */
+export function getLocalZoneAddress(device) {
+  const params = device.params || [];
+  const read = (name) => {
+    const param = params.find((entry) => entry.name === name);
+    return param ? Number(param.value) : NaN;
+  };
+  const systemId = read(SYSTEM_ID_PARAM);
+  const zoneId = read(ZONE_ID_PARAM);
+  return Number.isFinite(systemId) && Number.isFinite(zoneId) ? { systemId, zoneId } : null;
 }
 
 /**
