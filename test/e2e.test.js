@@ -323,32 +323,6 @@ test('the integration discovers, polls and controls Airzone zones', async (t) =>
     assert.match(ack.error, /not controllable/);
   });
 
-  await t.test('the manifest actions answer with a multi-language message', async () => {
-    send('external-integration.action.run', { message_id: 'action-1', key: 'test_connection' });
-    await waitUntil(
-      () => gladys.state.commandResults.some((r) => r.message_id === 'action-1'),
-      `test_connection ack\n${output}`,
-    );
-    const test = gladys.state.commandResults.find((r) => r.message_id === 'action-1');
-    assert.equal(test.success, true, test.error);
-    assert.match(test.data.message.en, /Airzone Cloud OK: 1 zone\(s\) and 1 air-quality sensor/);
-    assert.match(test.data.message.fr, /1 zone\(s\) et 1 capteur/);
-
-    const publishedBefore = gladys.state.discoveredDevicePosts.length;
-    send('external-integration.action.run', { message_id: 'action-2', key: 'refresh_devices' });
-    await waitUntil(
-      () => gladys.state.commandResults.some((r) => r.message_id === 'action-2'),
-      `refresh_devices ack\n${output}`,
-    );
-    const refresh = gladys.state.commandResults.find((r) => r.message_id === 'action-2');
-    assert.equal(refresh.success, true, refresh.error);
-    assert.match(refresh.data.message.en, /2 Airzone device\(s\) republished/);
-    assert.ok(
-      gladys.state.discoveredDevicePosts.length > publishedBefore,
-      'the action republished the devices',
-    );
-  });
-
   await t.test('the verbose logs option switches the log level at runtime', async () => {
     // Gladys does not inject LOG_LEVEL: without the option, debug lines stay out
     // of the Logs tab.

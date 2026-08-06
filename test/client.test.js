@@ -32,6 +32,12 @@ function startFakeAirzone(behaviour) {
         res.end(JSON.stringify(json));
       };
       if (url.pathname === '/auth/login') {
+        // A slow login must not lose the session (the real API takes seconds).
+        if (behaviour.slowLogins > 0) {
+          behaviour.slowLogins -= 1;
+          setTimeout(() => respond(200, behaviour.loginResponse), behaviour.slowLoginDelayMs);
+          return;
+        }
         respond(200, behaviour.loginResponse);
         return;
       }
@@ -91,6 +97,8 @@ test('AirzoneCloudClient', async (t) => {
     failNextWith401: false,
     rateLimitedResponses: 0,
     failStatusOf: null,
+    slowLogins: 0,
+    slowLoginDelayMs: 300,
   };
   const { server, requests, port } = await startFakeAirzone(behaviour);
   t.after(() => server.close());
@@ -193,6 +201,27 @@ test('AirzoneCloudClient', async (t) => {
       /HTTP 429 .*Too many requests/,
     );
     behaviour.rateLimitedResponses = 0;
+  });
+
+  await t.test('a login that times out is retried', async () => {
+    // Same client, with a login timeout short enough for the test.
+    const slowClient = new AirzoneCloudClient(`http://127.0.0.1:${port}`, { loginTimeoutMs: 80 });
+    behaviour.slowLogins = 1;
+    const before = requests.length;
+
+    await slowClient.login('user@example.com', 'secret');
+
+    assert.equal(slowClient.isLoggedIn(), true);
+    // The timed-out attempt plus the retry that succeeded.
+    assert.equal(requests.slice(before).filter((r) => r.path === '/auth/login').length, 2);
+  });
+
+  await t.test('a login that times out on every attempt throws', async () => {
+    const slowClient = new AirzoneCloudClient(`http://127.0.0.1:${port}`, { loginTimeoutMs: 80 });
+    behaviour.slowLogins = 5;
+    await assert.rejects(() => slowClient.login('user@example.com', 'secret'), /timeout|aborted/i);
+    assert.equal(slowClient.isLoggedIn(), false);
+    behaviour.slowLogins = 0;
   });
 
   await t.test('a login without a token throws', async () => {

@@ -45,6 +45,15 @@ applyLogLevel(config);
 // flag until the next successful poll (published on transitions only).
 const degradedDevices = new Set();
 
+// Reconnection to Airzone Cloud. A failed initialization (a login timing out,
+// Airzone Cloud down) used to be terminal: the integration kept answering every
+// poll with "Airzone Cloud is not connected" until the container was restarted.
+// It now retries on its own, with a growing delay.
+const RECONNECT_DELAYS_MS = [30 * 1000, 60 * 1000, 2 * 60 * 1000, 5 * 60 * 1000];
+let reconnectTimer = null;
+let reconnectAttempt = 0;
+let sessionLossReported = false;
+
 /**
  * Report the application-level connection status, shown in the Configuration
  * screen. Distinct from the container state machine: the integration can be
@@ -109,7 +118,6 @@ async function publishDevices() {
   await publishDeviceTransports(devices);
   await warnAboutDevicesNotAddedInGladys(devices);
   await reportConnectionStatus(true);
-  return devices;
 }
 
 /**
@@ -182,6 +190,72 @@ async function warnAboutDevicesNotAddedInGladys(devices) {
   }
 }
 
+/**
+ * Log in to Airzone Cloud and publish the devices. Schedules a retry when it
+ * fails, so a transient outage does not leave the integration dead.
+ */
+async function initialize() {
+  try {
+    if (await connectToAirzone()) {
+      await publishDevices();
+    }
+    // Reached the end: either connected, or waiting for the user to fill in the
+    // credentials (onConfigUpdated will run this again).
+    cancelReconnect();
+  } catch (err) {
+    logger.error(`Connection to Airzone Cloud failed: ${err.message}`);
+    await reportConnectionStatus(false, {
+      en: 'Connection to Airzone Cloud failed, check your credentials and the integration logs.',
+      fr: "La connexion à Airzone Cloud a échoué, vérifiez vos identifiants et les logs de l'intégration.",
+    });
+    scheduleReconnect();
+  }
+}
+
+/**
+ * Retry the initialization later (no-op when a retry is already pending).
+ */
+function scheduleReconnect() {
+  if (reconnectTimer !== null) {
+    return;
+  }
+  const delay = RECONNECT_DELAYS_MS[Math.min(reconnectAttempt, RECONNECT_DELAYS_MS.length - 1)];
+  reconnectAttempt += 1;
+  logger.info(`Retrying the connection to Airzone Cloud in ${Math.round(delay / 1000)} s`);
+  reconnectTimer = setTimeout(() => {
+    reconnectTimer = null;
+    initialize();
+  }, delay);
+  // Never keep the process alive just for a retry.
+  reconnectTimer.unref?.();
+}
+
+/**
+ * Cancel a pending retry: the session is up again.
+ */
+function cancelReconnect() {
+  if (reconnectTimer !== null) {
+    clearTimeout(reconnectTimer);
+    reconnectTimer = null;
+  }
+  reconnectAttempt = 0;
+  sessionLossReported = false;
+}
+
+/**
+ * Report a lost session once (a poll runs every minute on every device: without
+ * this the same line would flood the Logs tab), and make sure a retry is armed.
+ */
+function reportSessionLoss() {
+  if (!sessionLossReported) {
+    sessionLossReported = true;
+    logger.warn(
+      'Airzone Cloud session is down: the refreshes are paused until the reconnection succeeds',
+    );
+  }
+  scheduleReconnect();
+}
+
 // --- Discovery: Gladys asks for the list of devices --------------------------
 gladys.onScanRequest(async () => {
   logger.info('onScanRequest -> loading Airzone Cloud devices');
@@ -189,12 +263,18 @@ gladys.onScanRequest(async () => {
     throw new Error('Airzone Cloud is not configured');
   }
   await publishDevices();
+  cancelReconnect();
 });
 
 // --- Command: the user acts on a controllable feature ------------------------
 gladys.onSetValue(async (device, feature, value) => {
   logger.info(`onSetValue <- ${feature.external_id} = ${value}`);
   try {
+    if (!airzone.isLoggedIn()) {
+      // The user is acting on a device: reconnect right away instead of waiting
+      // for the scheduled retry.
+      await connectToAirzone();
+    }
     const { type, deviceId } = findTypeByDevice(gladys, device);
     if (!type || typeof type.onSetValue !== 'function') {
       // Throw: the SDK sends a success:false acknowledgement to Gladys.
@@ -222,6 +302,13 @@ gladys.onPoll(async (device) => {
     logger.debug(`onPoll ignored (no polling) for ${device.external_id}`);
     return;
   }
+  if (!airzone.isLoggedIn()) {
+    // Nothing to read without a session: report it once and let the retry work,
+    // instead of one error line per device and per poll.
+    reportSessionLoss();
+    logger.debug(`onPoll ${device.external_id} skipped: no Airzone Cloud session`);
+    return;
+  }
   try {
     await type.onPoll(gladys, {
       device,
@@ -238,51 +325,14 @@ gladys.onPoll(async (device) => {
   }
 });
 
-// --- Manifest actions: buttons in the Configuration screen -------------------
-// Both actions are account-level (they do not belong to a single device type),
-// so they are registered here rather than on a device blueprint.
-gladys.onAction('test_connection', async () => {
-  logger.info('Action test_connection -> logging in to Airzone Cloud');
-  await connectToAirzone();
-  if (!airzone.isLoggedIn()) {
-    throw new Error('Fill in your Airzone Cloud email and password first');
-  }
-  const { zones, airQualitySensors } = await airzone.listDevices();
-  await reportConnectionStatus(true);
-  return {
-    en: `Airzone Cloud OK: ${zones.length} zone(s) and ${airQualitySensors.length} air-quality sensor(s) found.`,
-    fr: `Airzone Cloud OK : ${zones.length} zone(s) et ${airQualitySensors.length} capteur(s) de qualité d'air trouvés.`,
-  };
-});
-
-gladys.onAction('refresh_devices', async () => {
-  logger.info('Action refresh_devices -> reloading the Airzone Cloud devices');
-  if (!airzone.isLoggedIn() && !(await connectToAirzone())) {
-    throw new Error('Fill in your Airzone Cloud email and password first');
-  }
-  const devices = await publishDevices();
-  return {
-    en: `${devices.length} Airzone device(s) republished to Gladys.`,
-    fr: `${devices.length} appareil(s) Airzone republiés dans Gladys.`,
-  };
-});
-
 // --- Configuration updated by the user ---------------------------------------
 gladys.onConfigUpdated(async (newConfig) => {
   logger.info('onConfigUpdated -> reconnecting to Airzone Cloud');
   config = normalizeConfig(newConfig);
   applyLogLevel(config);
-  try {
-    if (await connectToAirzone()) {
-      await publishDevices();
-    }
-  } catch (err) {
-    logger.error(`Reconnection to Airzone Cloud failed: ${err.message}`);
-    await reportConnectionStatus(false, {
-      en: 'Connection to Airzone Cloud failed, check your credentials and the integration logs.',
-      fr: "La connexion à Airzone Cloud a échoué, vérifiez vos identifiants et les logs de l'intégration.",
-    });
-  }
+  // New credentials: forget the retry backoff and try immediately.
+  cancelReconnect();
+  await initialize();
 });
 
 // --- Connection lifecycle ----------------------------------------------------
@@ -291,22 +341,16 @@ gladys.onConfigUpdated(async (newConfig) => {
 // here, this handler only runs the integration's own (re)initialization.
 gladys.on('connected', async () => {
   try {
-    // 1) Fetch the config filled in by the user.
+    // Fetch the config filled in by the user...
     config = normalizeConfig(await gladys.getConfig());
     applyLogLevel(config);
-
-    // 2) Log in to Airzone Cloud and publish the devices (this also reports the
-    // application-level connection status).
-    if (await connectToAirzone()) {
-      await publishDevices();
-    }
   } catch (err) {
-    logger.error(`Post-connection initialization failed: ${err.message}`);
-    await reportConnectionStatus(false, {
-      en: 'Connection to Airzone Cloud failed, check your credentials and the integration logs.',
-      fr: "La connexion à Airzone Cloud a échoué, vérifiez vos identifiants et les logs de l'intégration.",
-    });
+    logger.error(`Could not read the integration config: ${err.message}`);
+    return;
   }
+  // ...then log in to Airzone Cloud and publish the devices (this also reports
+  // the application-level connection status, and retries on failure).
+  await initialize();
 });
 
 // --- Graceful shutdown -------------------------------------------------------
@@ -314,6 +358,7 @@ gladys.on('connected', async () => {
 // the container (SIGTERM/SIGINT).
 gladys.handleShutdown((signal) => {
   logger.info(`Received ${signal} -> graceful shutdown`);
+  cancelReconnect();
 });
 
 // --- Startup -----------------------------------------------------------------
