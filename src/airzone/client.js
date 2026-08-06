@@ -21,6 +21,7 @@
 import { createLogger } from '@gladysassistant/integration-sdk';
 
 import { AIRZONE_ENDPOINT, AIRZONE_DEVICE_TYPES } from '../constants.js';
+import { describeError } from '../errors.js';
 import { RequestScheduler, sleep } from './scheduler.js';
 
 const logger = createLogger({ name: 'airzone' });
@@ -141,7 +142,7 @@ export class AirzoneCloudClient {
           device.status = await this.getZoneStatus(device.device_id, device.installationId);
         } catch (e) {
           logger.error(
-            `Status of the Airzone device "${device.name || device.device_id}" is unavailable: ${e.message}`,
+            `Status of the Airzone device "${device.name || device.device_id}" is unavailable: ${describeError(e)}`,
           );
           device.status = null;
         }
@@ -258,7 +259,7 @@ export class AirzoneCloudClient {
         // Back the whole account off, not only this request: the other requests
         // of the same poll cycle would be rejected too.
         this.scheduler.pauseFor(delay);
-        logger.warn(`${e.message} — retrying in ${delay} ms`);
+        logger.warn(`${describeError(e)} — retrying in ${delay} ms`);
         await sleep(delay);
       }
     }

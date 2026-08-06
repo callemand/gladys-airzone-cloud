@@ -22,6 +22,7 @@ import { DEVICE_TRANSPORTS, GladysIntegration, logger } from '@gladysassistant/i
 import { airzone } from './src/airzone/client.js';
 import { airzoneLocal } from './src/airzone/localClient.js';
 import { applyLogLevel, normalizeConfig } from './src/config.js';
+import { describeError } from './src/errors.js';
 import {
   buildDiscoveredDevices,
   buildTransportEntries,
@@ -84,7 +85,7 @@ async function configureLocalApi() {
   } catch (err) {
     airzoneLocal.noteFailure();
     logger.warn(
-      `Local API unreachable (${err.message}): using the Airzone Cloud API, and retrying later`,
+      `Local API unreachable (${describeError(err)}): using the Airzone Cloud API, and retrying later`,
     );
   }
 }
@@ -176,8 +177,8 @@ async function reportDeviceTransport(device, error, report) {
       transport: report?.transport || DEVICE_TRANSPORTS.CLOUD,
       degraded: true,
       message: {
-        en: `Airzone refused the last refresh: ${error.message}`.slice(0, 200),
-        fr: `Airzone a refusé le dernier rafraîchissement : ${error.message}`.slice(0, 200),
+        en: `Airzone refused the last refresh: ${describeError(error)}`.slice(0, 200),
+        fr: `Airzone a refusé le dernier rafraîchissement : ${describeError(error)}`.slice(0, 200),
       },
     };
   } else if (report && report.transport) {
@@ -251,7 +252,7 @@ gladys.onSetValue(async (device, feature, value) => {
   } catch (err) {
     // The SDK only acks the command as failed: without this, the reason of a
     // failed command never reaches the integration logs.
-    logger.error(`onSetValue ${feature.external_id} failed: ${err.message}`);
+    logger.error(`onSetValue ${feature.external_id} failed: ${describeError(err)}`);
     throw err;
   }
 });
@@ -274,7 +275,7 @@ gladys.onPoll(async (device) => {
   } catch (err) {
     // Same as onSetValue: a failed poll is otherwise invisible in the logs of
     // the integration, and only shows up as a device that stopped reporting.
-    logger.error(`onPoll ${device.external_id} failed: ${err.message}`);
+    logger.error(`onPoll ${device.external_id} failed: ${describeError(err)}`);
     await reportDeviceTransport(device, err);
     throw err;
   }
@@ -291,7 +292,7 @@ gladys.onConfigUpdated(async (newConfig) => {
       await publishDevices();
     }
   } catch (err) {
-    logger.error(`Reconnection to Airzone Cloud failed: ${err.message}`);
+    logger.error(`Reconnection to Airzone Cloud failed: ${describeError(err)}`);
     await reportConnectionStatus(false, {
       en: 'Connection to Airzone Cloud failed, check your credentials and the integration logs.',
       fr: "La connexion à Airzone Cloud a échoué, vérifiez vos identifiants et les logs de l'intégration.",
@@ -318,7 +319,7 @@ gladys.on('connected', async () => {
       await publishDevices();
     }
   } catch (err) {
-    logger.error(`Post-connection initialization failed: ${err.message}`);
+    logger.error(`Post-connection initialization failed: ${describeError(err)}`);
     await reportConnectionStatus(false, {
       en: 'Connection to Airzone Cloud failed, check your credentials and the integration logs.',
       fr: "La connexion à Airzone Cloud a échoué, vérifiez vos identifiants et les logs de l'intégration.",

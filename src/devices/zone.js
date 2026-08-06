@@ -19,6 +19,7 @@ import {
 
 import { airzone } from '../airzone/client.js';
 import { airzoneLocal } from '../airzone/localClient.js';
+import { describeError } from '../errors.js';
 import {
   AC_MODE,
   AIRZONE_MODE,
@@ -396,10 +397,10 @@ export const zoneDevice = {
       } catch (err) {
         // The webserver is off, rebooting or its local API got disabled: fall
         // back to the cloud and stop trying locally for a while.
-        fallbackReason = err.message;
+        fallbackReason = describeError(err);
         airzoneLocal.noteFailure();
         logger.warn(
-          `Local API failed for ${device.external_id} (${err.message}): falling back to the Airzone Cloud API`,
+          `Local API failed for ${device.external_id} (${fallbackReason}): falling back to the Airzone Cloud API`,
         );
       }
     }
@@ -451,7 +452,7 @@ export const zoneDevice = {
         // waiting for their action to happen.
         airzoneLocal.noteFailure();
         logger.warn(
-          `Local API failed for ${feature.external_id} (${err.message}): retrying through the Airzone Cloud API`,
+          `Local API failed for ${feature.external_id} (${describeError(err)}): retrying through the Airzone Cloud API`,
         );
       }
     }
