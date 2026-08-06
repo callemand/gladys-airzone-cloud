@@ -81,6 +81,57 @@ template with the JavaScript SDK
 └─ .github/workflows/build.yml       # multi-arch build (git tag or called by release)
 ```
 
+## Test it locally
+
+Two levels, from the fastest to the most faithful.
+
+### 1. Against your real Airzone, without Gladys nor Docker
+
+`npm run dev` starts a stand-in for the Gladys host API (REST + WebSocket), spawns
+the integration against it, prints everything it publishes (devices, states,
+transport badges, connection status) and polls every discovered device on a loop —
+like the Gladys scheduler does.
+
+```bash
+npm install
+
+# cloud only
+AIRZONE_EMAIL="you@example.com" AIRZONE_PASSWORD="secret" npm run dev
+
+# local API too (the webserver address of your installation)
+AIRZONE_EMAIL="you@example.com" AIRZONE_PASSWORD="secret" \
+AIRZONE_LOCAL_HOST="192.168.1.42" npm run dev
+
+# send one command 5 s after startup, to check a write end to end
+AIRZONE_EMAIL="..." AIRZONE_PASSWORD="..." AIRZONE_LOCAL_HOST="192.168.1.42" \
+DEV_SET="temperature=21" npm run dev
+```
+
+Other knobs: `AIRZONE_LOCAL_PORT` (3000), `DEV_POLL_SECONDS` (15), `DEV_PORT`
+(1444), `LOG_LEVEL` (debug), `AIRZONE_VERBOSE=false`.
+
+Before that, a bare `curl` tells you whether the local API is enabled on your
+webserver at all — and gives you the system/zone numbers of every zone:
+
+```bash
+curl -s -X POST http://192.168.1.42:3000/api/v1/version
+curl -s -X POST http://192.168.1.42:3000/api/v1/hvac \
+  -H 'Content-Type: application/json' -d '{"systemID":1,"zoneID":0}'
+```
+
+### 2. Inside your own Gladys, with the branch code
+
+Gladys can install an integration from a **Docker image** instead of the store
+(the "dev" install path, selector `ext-dev-<name>`):
+
+```bash
+docker build -t gladys-airzone-cloud:dev .
+```
+
+Then install it in Gladys by image (`gladys-airzone-cloud:dev`). The supervisor
+tries to pull the image, logs a warning when it cannot, and starts the local one.
+Rebuild + restart the integration to pick up a change.
+
 ## Run it locally
 
 ```bash
