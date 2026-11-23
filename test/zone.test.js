@@ -7,6 +7,7 @@ import {
   buildSetZoneChange,
   getParam,
   getTemperature,
+  getTemperatureStep,
 } from '../src/devices/zone.js';
 import { AC_MODE } from '../src/constants.js';
 import { ZONE_DEVICE, ZONE_STATUS, REGULAR_ZONE_STATUS } from './fixtures.js';
@@ -102,6 +103,21 @@ test('buildZoneFeatures falls back to default bounds when no range is reported',
   );
   assert.equal(withoutRange.min, 10);
   assert.equal(withoutRange.max, 30);
+});
+
+test('buildZoneFeatures sets a half-degree setpoint step by default', () => {
+  const temperature = buildZoneFeatures(ids, { status: {} }).find((f) =>
+    f.external_id.endsWith(':temperature'),
+  );
+  assert.equal(temperature.step, 0.5);
+});
+
+test('getTemperatureStep reads the step Airzone reports, else half a degree', () => {
+  assert.equal(getTemperatureStep({ step: { celsius: 1, fah: 2 } }), 1);
+  assert.equal(getTemperatureStep({ step: 0.5 }), 0.5);
+  assert.equal(getTemperatureStep({ step: { celsius: 0 } }), 0.5);
+  assert.equal(getTemperatureStep({}), 0.5);
+  assert.equal(getTemperatureStep(undefined), 0.5);
 });
 
 test('buildPollStates maps a master zone status to Gladys states', () => {
