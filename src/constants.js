@@ -28,6 +28,10 @@ export const DEFAULT_TEMPERATURE_BOUNDS = {
   MAX: 30,
 };
 
+// Setpoint step when the zone does not report one: Airzone thermostats are set
+// in half degrees, while Gladys defaults air conditioning to whole degrees.
+export const DEFAULT_TEMPERATURE_STEP = 0.5;
+
 // Relative humidity sensor bounds (percent).
 export const HUMIDITY_BOUNDS = {
   MIN: 0,

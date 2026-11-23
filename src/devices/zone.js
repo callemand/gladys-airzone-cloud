@@ -26,6 +26,7 @@ import {
   AIRZONE_PARAM,
   AIRZONE_UNITS,
   DEFAULT_TEMPERATURE_BOUNDS,
+  DEFAULT_TEMPERATURE_STEP,
   FEATURE_CODES,
   HUMIDITY_BOUNDS,
   MODE_TEMPERATURE_FIELDS,
@@ -144,6 +145,17 @@ function getTemperatureBounds(status) {
 }
 
 /**
+ * The setpoint step of the zone, in °C: what Airzone reports in `step`, else
+ * half a degree.
+ * @param {object} status Airzone zone status
+ * @returns {number} the step
+ */
+export function getTemperatureStep(status) {
+  const step = toNumber(getTemperature(status, 'step'));
+  return step !== null && step > 0 ? step : DEFAULT_TEMPERATURE_STEP;
+}
+
+/**
  * Build the Gladys features of an Airzone zone.
  * @param {object} ids external ids of the Gladys device (from gladys.externalIds()):
  *   `{ device, feature(featureKey) }`
@@ -189,6 +201,8 @@ export function buildZoneFeatures(ids, zone) {
       has_feedback: true,
       min,
       max,
+      // Without it, Gladys steps an air conditioning setpoint by whole degrees.
+      step: getTemperatureStep(zone.status),
       unit: DEVICE_FEATURE_UNITS.CELSIUS,
       category: DEVICE_FEATURE_CATEGORIES.AIR_CONDITIONING,
       type: DEVICE_FEATURE_TYPES.AIR_CONDITIONING.TARGET_TEMPERATURE,
